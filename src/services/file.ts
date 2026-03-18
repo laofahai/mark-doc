@@ -1,7 +1,7 @@
 import { writeTextFile, remove } from '@tauri-apps/plugin-fs'
 import { save } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
-import { preprocessDiagrams, cleanupDiagramFiles } from './diagram-render'
+import { preprocessForExport, cleanupTempFiles } from './export-preprocess'
 
 export interface FileMetadata {
   path: string
@@ -23,7 +23,7 @@ async function removeTempFile(path: string) {
 async function convertMdToDocx(markdown: string, outputPath: string, referenceDocxPath?: string): Promise<boolean> {
   // 预处理：将 mermaid 等图表代码块渲染为 PNG 临时文件
   const outputDir = outputPath.substring(0, outputPath.lastIndexOf('/'))
-  const { markdown: processedMd, tempFiles } = await preprocessDiagrams(markdown, outputDir)
+  const { markdown: processedMd, tempFiles } = await preprocessForExport(markdown, outputDir)
   const tempMdPath = outputPath.replace(/\.docx$/i, '.tmp.md')
   await writeTextFile(tempMdPath, processedMd)
   try {
@@ -44,7 +44,7 @@ async function convertMdToDocx(markdown: string, outputPath: string, referenceDo
     return true
   } finally {
     await removeTempFile(tempMdPath)
-    await cleanupDiagramFiles(tempFiles)
+    await cleanupTempFiles(tempFiles)
   }
 }
 
