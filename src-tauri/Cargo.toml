@@ -1,0 +1,26 @@
+[package]
+name = "mark-doc"
+version = "0.1.0"
+description = "Markdown + DOCX 双编辑器"
+authors = ["MarkDoc Team"]
+edition = "2021"
+
+[lib]
+name = "mark_doc_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+linch_tech_desktop_core = "0.2"
+tauri = { version = "2.9", features = [] }
+tauri-plugin-fs = "2.4"
+tauri-plugin-opener = "2.5"
+tauri-plugin-dialog = "2.6"
+tauri-plugin-shell = "2.3"
+tauri-plugin-sql = { version = "2.3", features = ["sqlite"] }
+tauri-plugin-updater = "2.10"
+tauri-plugin-process = "2.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

@@ -1,0 +1,52 @@
+{
+  "productName": "playground",
+  "version": "0.1.2",
+  "identifier": "tech.linch.playground",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Linch Desktop Core - Playground",
+        "width": 1200,
+        "height": 800,
+        "decorations": false,
+        "transparent": false,
+        "shadow": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "resources": ["resources/*"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {
+    "shell": {
+      "open": true
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhCQUU4Rjg4NUQ1RTQxODgKUldTSVFWNWRpSSt1aXlpUnlYa1FXQ29PSmNCZ05tUHYzM0xrSGRub2VSbk9vSHRPb0Qvd2JibGkK",
+      "endpoints": [
+        "https://github.com/laofahai/linch-desktop-core/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}
