@@ -102,7 +102,7 @@ export async function preprocessForExport(
       const bytes = base64ToUint8Array(m.data)
       await writeFile(path, bytes)
       tempFiles.push(path)
-      result = result.replace(m.full, `![${m.alt}](${path})`)
+      result = result.replace(m.full, `![${m.alt}](${path}){width=100%}`)
     } catch (err) {
       console.warn(`Failed to extract base64 image ${i}:`, err)
     }
@@ -134,7 +134,7 @@ export async function preprocessForExport(
           const path = `${dir}/.markdoc-diagram-${i}-${Date.now()}.png`
           await writeFile(path, new Uint8Array(pngBuffer))
           tempFiles.push(path)
-          result = result.replace(block.match, `![diagram](${path})`)
+          result = result.replace(block.match, `![diagram](${path}){width=100%}`)
         } catch (err) {
           console.warn(`Failed to render diagram ${i}:`, err)
         }
