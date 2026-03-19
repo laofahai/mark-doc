@@ -7,6 +7,7 @@ import {
   DialogFooter,
   Button,
 } from '@linch-tech/desktop-core'
+import { useTranslation } from 'react-i18next'
 
 interface Props {
   open: boolean
@@ -17,19 +18,20 @@ interface Props {
 }
 
 export function CloseConfirmDialog({ open, fileName, onClose, onDiscard, onSave }: Props) {
+  const { t } = useTranslation()
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>未保存的更改</DialogTitle>
+          <DialogTitle>{t('close.title')}</DialogTitle>
           <DialogDescription>
-            "{fileName}" 有未保存的更改，是否保存？
+            {t('close.message', { fileName })}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="gap-2">
-          <Button variant="ghost" onClick={onClose}>取消</Button>
-          <Button variant="outline" onClick={onDiscard}>不保存</Button>
-          <Button onClick={onSave}>保存</Button>
+          <Button variant="ghost" onClick={onClose}>{t('common.cancel')}</Button>
+          <Button variant="outline" onClick={onDiscard}>{t('close.discard')}</Button>
+          <Button onClick={onSave}>{t('common.save')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

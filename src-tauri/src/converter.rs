@@ -1,9 +1,37 @@
 use std::process::Command;
 use tauri::Manager;
 
-/// 用 `which` 查找可执行文件的绝对路径，解决 GUI 启动时 PATH 不完整问题
+/// 查找可执行文件的绝对路径，解决 macOS GUI 启动时 PATH 不完整问题
 fn find_bin(name: &str) -> String {
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
+    {
+        // macOS GUI 应用的 PATH 极其有限，直接检查常见安装路径
+        let candidates = [
+            format!("/opt/homebrew/bin/{}", name),   // Apple Silicon Homebrew
+            format!("/usr/local/bin/{}", name),       // Intel Homebrew
+            format!("/usr/bin/{}", name),             // 系统自带
+        ];
+        for path in &candidates {
+            if std::path::Path::new(path).exists() {
+                return path.clone();
+            }
+        }
+        // 再尝试通过 shell 展开完整 PATH 来查找
+        if let Ok(output) = Command::new("/bin/sh")
+            .arg("-l")
+            .arg("-c")
+            .arg(format!("which {}", name))
+            .output()
+        {
+            if output.status.success() {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !path.is_empty() {
+                    return path;
+                }
+            }
+        }
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
     {
         if let Ok(output) = Command::new("which").arg(name).output() {
             if output.status.success() {
@@ -14,7 +42,6 @@ fn find_bin(name: &str) -> String {
             }
         }
     }
-    // 找不到就回退到名字本身，让系统自己找
     name.to_string()
 }
 

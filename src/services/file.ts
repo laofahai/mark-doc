@@ -20,7 +20,7 @@ async function removeTempFile(path: string) {
  *   - 有值：使用该文件作为样式 reference（保留原 docx 样式）
  *   - 无值：后端自动使用内置 reference.docx
  */
-async function convertMdToDocx(markdown: string, outputPath: string, referenceDocxPath?: string): Promise<boolean> {
+export async function convertMdToDocx(markdown: string, outputPath: string, referenceDocxPath?: string): Promise<boolean> {
   // 预处理：将 mermaid 等图表代码块渲染为 PNG 临时文件
   const outputDir = outputPath.substring(0, outputPath.lastIndexOf('/'))
   const { markdown: processedMd, tempFiles } = await preprocessForExport(markdown, outputDir)
@@ -66,18 +66,26 @@ export async function saveAsMarkdown(markdown: string, defaultName = 'untitled.m
 
 /** 保存为 Word（markdown -> 临时文件 -> Pandoc -> docx） */
 export async function saveAsDocx(markdown: string, defaultName = 'untitled.docx', referenceDocxPath?: string): Promise<FileMetadata | null> {
+  // 确保默认文件名有 .docx 后缀
+  let docxName = defaultName.replace(/\.(md|docx)$/i, '') + '.docx'
   const filePath = await save({
     filters: [{ name: 'Word', extensions: ['docx'] }],
-    defaultPath: defaultName.replace(/\.md$/i, '.docx'),
+    defaultPath: docxName,
   })
   if (!filePath) return null
 
-  const ok = await convertMdToDocx(markdown, filePath as string, referenceDocxPath)
+  // 确保路径有 .docx 后缀
+  let outputPath = filePath as string
+  if (!outputPath.toLowerCase().endsWith('.docx')) {
+    outputPath += '.docx'
+  }
+
+  const ok = await convertMdToDocx(markdown, outputPath, referenceDocxPath)
   if (!ok) return null
 
   return {
-    path: filePath as string,
-    name: (filePath as string).split('/').pop() || defaultName,
+    path: outputPath,
+    name: outputPath.split('/').pop() || defaultName,
     sourceType: 'docx',
   }
 }

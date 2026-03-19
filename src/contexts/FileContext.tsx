@@ -1,7 +1,8 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
-import { readTextFile } from '@tauri-apps/plugin-fs'
+import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from 'react'
+import { readTextFile, watch } from '@tauri-apps/plugin-fs'
 import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 
 export interface FileTab {
   id: string
@@ -20,11 +21,19 @@ export interface RecentFile {
   lastOpened: number
 }
 
+/** 外部修改提示信息 */
+export interface ExternalChange {
+  tabId: string
+  path: string
+  name: string
+}
+
 interface FileContextValue {
   tabs: FileTab[]
   activeTabId: string | null
   activeTab: FileTab | null
   recentFiles: RecentFile[]
+  externalChange: ExternalChange | null
   setTabContent: (content: string) => void
   markTabSaved: (id: string, path?: string, name?: string, sourceType?: 'md' | 'docx') => void
   openFileFromPath: (path: string, name: string) => Promise<void>
@@ -32,6 +41,8 @@ interface FileContextValue {
   createNewTab: () => void
   closeTab: (id: string) => void
   switchTab: (id: string) => void
+  reloadTab: (tabId: string) => Promise<void>
+  dismissExternalChange: () => void
   removeRecentFile: (path: string) => void
   clearRecentFiles: () => void
 }
@@ -65,6 +76,9 @@ export function FileProvider({ children }: { children: ReactNode }) {
   const [tabs, setTabs] = useState<FileTab[]>([])
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
   const [recentFiles, setRecentFiles] = useState<RecentFile[]>(loadRecent)
+  const [externalChange, setExternalChange] = useState<ExternalChange | null>(null)
+  // 记录我们自己保存的时间戳，避免自己保存时触发外部变化提示
+  const selfSaveTimestamps = useRef<Map<string, number>>(new Map())
 
   const activeTab = tabs.find(t => t.id === activeTabId) || null
 
@@ -99,6 +113,9 @@ export function FileProvider({ children }: { children: ReactNode }) {
   const markTabSaved = useCallback((id: string, path?: string, name?: string, sourceType?: 'md' | 'docx') => {
     setTabs(prev => prev.map(t => {
       if (t.id !== id) return t
+      const finalPath = path !== undefined ? path : t.path
+      // 记录保存时间戳，2秒内忽略该文件的外部变化
+      if (finalPath) selfSaveTimestamps.current.set(finalPath, Date.now())
       return {
         ...t,
         isDirty: false,
@@ -112,7 +129,7 @@ export function FileProvider({ children }: { children: ReactNode }) {
 
   const createNewTab = useCallback(() => {
     const id = nextTabId()
-    const name = '未命名.md'
+    const name = 'untitled.md'
     setTabs(prev => [...prev, {
       id,
       path: '',
@@ -155,6 +172,8 @@ export function FileProvider({ children }: { children: ReactNode }) {
       }])
       setActiveTabId(id)
       addToRecent(path, name)
+      // 通知侧边栏展示文件所在目录
+      window.dispatchEvent(new CustomEvent('mark-doc:file-opened', { detail: path }))
     } catch (error) {
       console.error('Failed to open file:', error)
     }
@@ -177,8 +196,73 @@ export function FileProvider({ children }: { children: ReactNode }) {
     setActiveTabId(id)
   }, [])
 
+  const reloadTab = useCallback(async (tabId: string) => {
+    const tab = tabs.find(t => t.id === tabId)
+    if (!tab || !tab.path) return
+    try {
+      const isDocx = tab.path.toLowerCase().endsWith('.docx')
+      const content = isDocx ? await docxToMarkdown(tab.path) : await readTextFile(tab.path)
+      setTabs(prev => prev.map(t => t.id === tabId ? { ...t, content, isDirty: false } : t))
+    } catch (e) {
+      console.error('Failed to reload file:', e)
+    }
+    setExternalChange(null)
+  }, [tabs])
+
+  const dismissExternalChange = useCallback(() => {
+    setExternalChange(null)
+  }, [])
+
+  // 监听已打开文件的外部变化
+  const tabsRef = useRef(tabs)
+  tabsRef.current = tabs
+  useEffect(() => {
+    const unwatchers: (() => void)[] = []
+    const paths = tabs.filter(t => t.path).map(t => ({ id: t.id, path: t.path, name: t.name }))
+
+    for (const { id, path, name } of paths) {
+      watch(path, () => {
+        // 忽略自己保存触发的变化（2秒窗口）
+        const saveTime = selfSaveTimestamps.current.get(path)
+        if (saveTime && Date.now() - saveTime < 2000) return
+        setExternalChange({ tabId: id, path, name })
+      }, { delayMs: 500 }).then(unwatch => {
+        unwatchers.push(unwatch)
+      }).catch(() => {})
+    }
+
+    return () => { unwatchers.forEach(fn => fn()) }
+  }, [tabs.map(t => t.path).join('|')])
+
+  // 监听系统文件关联打开事件
+  const openFileFromPathRef = useRef(openFileFromPath)
+  openFileFromPathRef.current = openFileFromPath
+  useEffect(() => {
+    // 查询冷启动时缓存的文件路径
+    invoke<string[]>('take_pending_files').then((paths) => {
+      for (const path of paths) {
+        const name = path.split('/').pop() || 'untitled'
+        openFileFromPathRef.current(path, name)
+      }
+    }).catch(() => {})
+
+    // 监听后续的文件打开事件（应用已运行时）
+    const unlisten = listen<string[]>('open-files', (event) => {
+      for (const path of event.payload) {
+        const name = path.split('/').pop() || 'untitled'
+        openFileFromPathRef.current(path, name)
+      }
+    })
+    return () => { unlisten.then(fn => fn()) }
+  }, [])
+
   const openFileDialog = useCallback(async () => {
+    // 默认打开当前文件所在目录
+    const currentDir = activeTab?.path
+      ? activeTab.path.substring(0, activeTab.path.lastIndexOf('/'))
+      : undefined
     const filePath = await open({
+      defaultPath: currentDir,
       filters: [
         { name: 'Markdown', extensions: ['md'] },
         { name: 'Word', extensions: ['docx'] },
@@ -188,7 +272,7 @@ export function FileProvider({ children }: { children: ReactNode }) {
       const name = (filePath as string).split('/').pop() || 'untitled.md'
       await openFileFromPath(filePath as string, name)
     }
-  }, [openFileFromPath])
+  }, [openFileFromPath, activeTab?.path])
 
   return (
     <FileContext.Provider value={{
@@ -196,6 +280,7 @@ export function FileProvider({ children }: { children: ReactNode }) {
       activeTabId,
       activeTab,
       recentFiles,
+      externalChange,
       setTabContent,
       markTabSaved,
       openFileFromPath,
@@ -203,6 +288,8 @@ export function FileProvider({ children }: { children: ReactNode }) {
       createNewTab,
       closeTab,
       switchTab,
+      reloadTab,
+      dismissExternalChange,
       removeRecentFile,
       clearRecentFiles,
     }}>

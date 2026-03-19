@@ -1,13 +1,20 @@
 import { useState } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import { LinchDesktopProvider, Shell, Separator } from '@linch-tech/desktop-core'
+import { LinchDesktopProvider, Shell, Separator, addI18nResources } from '@linch-tech/desktop-core'
 import { EditorPage } from './pages/EditorPage'
 import { Sidebar } from './components/Sidebar'
 import { FileProvider, useFile } from './contexts/FileContext'
 import { PandocGuard } from './components/PandocGuard'
 import { SettingsDialog } from './components/SettingsDialog'
 import type { LinchDesktopConfig } from '@linch-tech/desktop-core'
+import { useTranslation } from 'react-i18next'
 import { Settings } from 'lucide-react'
+import zhLocale from './locales/zh'
+import enLocale from './locales/en'
+
+// 在模块级别立即注入翻译资源，确保首次渲染时就可用
+addI18nResources('zh', zhLocale)
+addI18nResources('en', enLocale)
 
 type PageWidth = 'normal' | 'wide' | 'full'
 
@@ -45,11 +52,12 @@ function TitleLeft() {
 }
 
 function TitleRight({ onOpenSettings }: { onOpenSettings: () => void }) {
+  const { t } = useTranslation()
   return (
     <button
       className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors bg-transparent border-none cursor-pointer"
       onClick={onOpenSettings}
-      title="设置"
+      title={t('app.settings')}
     >
       <Settings size={14} />
     </button>
@@ -64,7 +72,7 @@ function AppShell() {
   const config: Partial<LinchDesktopConfig> = {
     brand: { name: 'app.name', version: `v${__APP_VERSION__}` },
     nav: [],
-    features: { updater: false, database: false, sentry: false },
+    features: { updater: true, database: false, sentry: false },
     layout: { sidebar: { width: hasFolderOpen ? 220 : 0 } },
     slots: {
       titleBar: {
@@ -77,11 +85,11 @@ function AppShell() {
       },
     },
     i18n: {
-      defaultLanguage: 'zh',
+      defaultLanguage: localStorage.getItem('i18nextLng') || 'zh',
       supportedLanguages: ['zh', 'en'],
       resources: {
-        en: { app: { name: 'MarkDoc', editor: 'Editor' } },
-        zh: { app: { name: 'MarkDoc', editor: '编辑器' } },
+        en: enLocale,
+        zh: zhLocale,
       },
     },
   }

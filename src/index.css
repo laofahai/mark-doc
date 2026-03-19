@@ -320,6 +320,12 @@ aside > div.py-2 > div.px-2 {
 /* Table — transparent background, theme-aware borders */
 .vditor-reset table {
   border-color: var(--border) !important;
+  display: table !important;
+  table-layout: fixed !important;
+  max-width: 100% !important;
+  width: 100% !important;
+  word-break: break-word !important;
+  overflow-wrap: break-word !important;
 }
 .vditor-reset table tr {
   background-color: transparent !important;
@@ -330,9 +336,48 @@ aside > div.py-2 > div.px-2 {
 .vditor-reset table td,
 .vditor-reset table th {
   border-color: var(--border) !important;
+  white-space: normal !important;
+  word-break: break-word !important;
+  overflow-wrap: break-word !important;
 }
 .vditor-reset table th {
   background: var(--muted) !important;
+}
+
+/* 所有内容元素不超出编辑器宽度 */
+.vditor-reset {
+  overflow-wrap: break-word !important;
+  word-break: break-word !important;
+}
+.vditor-reset img,
+.vditor-reset svg {
+  max-width: 100% !important;
+  height: auto !important;
+}
+.vditor-reset pre {
+  max-width: 100% !important;
+  overflow-x: auto !important;
+}
+.vditor-reset blockquote {
+  max-width: 100% !important;
+  overflow-wrap: break-word !important;
+}
+.vditor-reset a {
+  word-break: break-all !important;
+}
+.vditor-reset iframe,
+.vditor-reset video,
+.vditor-reset embed,
+.vditor-reset object {
+  max-width: 100% !important;
+}
+.vditor-reset .katex-display {
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+}
+.vditor-reset .vditor-wysiwyg__block {
+  max-width: 100% !important;
+  overflow-x: auto !important;
 }
 
 /* Wysiwyg popover (context toolbar on selected elements) */

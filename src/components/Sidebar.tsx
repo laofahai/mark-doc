@@ -1,12 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { open } from '@tauri-apps/plugin-dialog'
 import { readDir, watch } from '@tauri-apps/plugin-fs'
+import { useTranslation } from 'react-i18next'
 import { useFile } from '../contexts/FileContext'
 import {
   FolderOpen,
   FolderClosed,
   FileText,
   ChevronRight,
+  ArrowUp,
+  ArrowDownRight,
   X as XIcon,
 } from 'lucide-react'
 
@@ -24,6 +27,7 @@ interface SidebarProps {
 const LAST_FOLDER_KEY = 'mark-doc-last-folder'
 
 export function Sidebar({ onFolderStateChange }: SidebarProps) {
+  const { t } = useTranslation()
   const { activeTab, openFileFromPath } = useFile()
   const [currentFolder, setCurrentFolder] = useState<string | null>(null)
   const [folderTree, setFolderTree] = useState<FileNode[]>([])
@@ -63,6 +67,22 @@ export function Sidebar({ onFolderStateChange }: SidebarProps) {
     try { setFolderTree(await buildFileNodes(path)) }
     catch (error) { console.error('Failed to load folder:', error) }
   }, [buildFileNodes])
+
+  // 监听文件打开事件，自动展示文件所在目录
+  useEffect(() => {
+    const openFileHandler = (e: Event) => {
+      const filePath = (e as CustomEvent<string>).detail
+      if (!filePath) return
+      const dir = filePath.substring(0, filePath.lastIndexOf('/'))
+      if (dir && dir !== currentFolder) {
+        setCurrentFolder(dir)
+        localStorage.setItem(LAST_FOLDER_KEY, dir)
+        refreshFolder(dir)
+      }
+    }
+    window.addEventListener('mark-doc:file-opened', openFileHandler)
+    return () => window.removeEventListener('mark-doc:file-opened', openFileHandler)
+  }, [currentFolder, refreshFolder])
 
   // 恢复上次打开的目录
   useEffect(() => {
@@ -120,6 +140,23 @@ export function Sidebar({ onFolderStateChange }: SidebarProps) {
     localStorage.removeItem(LAST_FOLDER_KEY)
   }
 
+  const goToParent = async () => {
+    if (!currentFolder) return
+    const parent = currentFolder.substring(0, currentFolder.lastIndexOf('/'))
+    if (!parent) return
+    setCurrentFolder(parent)
+    localStorage.setItem(LAST_FOLDER_KEY, parent)
+    setExpandedFolders(new Set())
+    await refreshFolder(parent)
+  }
+
+  const drillInto = async (folderPath: string) => {
+    setCurrentFolder(folderPath)
+    localStorage.setItem(LAST_FOLDER_KEY, folderPath)
+    setExpandedFolders(new Set())
+    await refreshFolder(folderPath)
+  }
+
   const toggleFolder = async (node: FileNode) => {
     const newExpanded = new Set(expandedFolders)
     if (newExpanded.has(node.path)) {
@@ -141,7 +178,7 @@ export function Sidebar({ onFolderStateChange }: SidebarProps) {
     return nodes.map(node => (
       <div key={node.path}>
         <div
-          className={`flex items-center h-7 px-1.5 cursor-pointer rounded-md mx-1 text-[12px] transition-colors ${
+          className={`group/node flex items-center h-7 px-1.5 cursor-pointer rounded-md mx-1 text-[12px] transition-colors ${
             isActive(node.path) ? 'bg-accent text-accent-foreground font-medium' : 'text-foreground/80 hover:bg-accent/50'
           }`}
           style={{ paddingLeft: `${level * 14 + 4}px` }}
@@ -157,7 +194,16 @@ export function Sidebar({ onFolderStateChange }: SidebarProps) {
               <><span className="w-3.5" /><FileText size={14} /></>
             )}
           </span>
-          <span className="truncate">{node.name}</span>
+          <span className="truncate flex-1">{node.name}</span>
+          {node.type === 'folder' && (
+            <button
+              className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent opacity-0 group-hover/node:opacity-100 cursor-pointer border-none bg-transparent flex items-center shrink-0"
+              onClick={(e) => { e.stopPropagation(); drillInto(node.path) }}
+              title={t('common.drillInto')}
+            >
+              <ArrowDownRight size={12} />
+            </button>
+          )}
         </div>
         {node.type === 'folder' && expandedFolders.has(node.path) && node.children && renderTree(node.children, level + 1)}
       </div>
@@ -167,13 +213,22 @@ export function Sidebar({ onFolderStateChange }: SidebarProps) {
   if (!currentFolder) return null
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
+    <div className="flex flex-col flex-1 overflow-hidden pt-2">
       <div className="flex items-center justify-between px-2 py-1">
-        <span className="text-[11px] font-medium text-muted-foreground truncate">{currentFolder.split('/').pop()}</span>
+        <div className="flex items-center gap-0.5 min-w-0 flex-1">
+          <button
+            className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent cursor-pointer border-none bg-transparent flex items-center shrink-0"
+            onClick={goToParent}
+            title={t('common.parentFolder')}
+          >
+            <ArrowUp size={12} />
+          </button>
+          <span className="text-[11px] font-medium text-muted-foreground truncate">{currentFolder.split('/').pop()}</span>
+        </div>
         <button
-          className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent cursor-pointer border-none bg-transparent flex items-center"
+          className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent cursor-pointer border-none bg-transparent flex items-center shrink-0"
           onClick={closeFolder}
-          title="关闭文件夹"
+          title={t('common.closeFolder')}
         >
           <XIcon size={12} />
         </button>

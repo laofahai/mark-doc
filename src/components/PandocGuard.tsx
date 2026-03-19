@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, Button } from '@linch-tech/desktop-core'
+import { useTranslation } from 'react-i18next'
 import { Loader2 } from 'lucide-react'
 
 type Platform = 'macos' | 'windows' | 'linux' | 'unknown'
@@ -13,23 +14,19 @@ function getPlatform(): Platform {
   return 'unknown'
 }
 
-const INSTALL_TIPS: Record<Platform, string> = {
-  macos: '请打开终端运行：brew install pandoc\n\n如果没有 Homebrew，请先访问 https://brew.sh 安装',
-  windows: '请打开 PowerShell 运行：winget install -e --id JohnMacFarlane.Pandoc',
-  linux: '请打开终端运行：sudo apt install pandoc（Ubuntu/Debian）\n或：sudo dnf install pandoc（Fedora）',
-  unknown: '请访问 https://pandoc.org/installing.html 下载安装',
+const INSTALL_TIP_KEYS: Record<Platform, string> = {
+  macos: 'pandoc.macosGuide',
+  windows: 'pandoc.windowsGuide',
+  linux: 'pandoc.linuxGuide',
+  unknown: 'pandoc.unknownGuide',
 }
 
 interface Props {
   children: ReactNode
 }
 
-/**
- * 包裹整个 app，启动时检测 pandoc。
- * - 有 pandoc → 正常渲染 children
- * - 没有 pandoc → 显示安装引导弹窗
- */
 export function PandocGuard({ children }: Props) {
+  const { t } = useTranslation()
   const [status, setStatus] = useState<'checking' | 'ready' | 'missing'>('checking')
   const [installing, setInstalling] = useState(false)
   const [installError, setInstallError] = useState<string | null>(null)
@@ -55,20 +52,19 @@ export function PandocGuard({ children }: Props) {
       if (result.success) {
         await checkPandoc()
       } else if (result.error === 'NO_BREW') {
-        setInstallError('未检测到 Homebrew，请先安装 Homebrew 后重试，或手动安装 Pandoc')
+        setInstallError(t('pandoc.noHomebrew'))
       } else if (result.error === 'LINUX_MANUAL') {
-        setInstallError('Linux 需要手动安装，请参考下方命令')
+        setInstallError(t('pandoc.linuxManual'))
       } else {
-        setInstallError(result.error || '安装失败')
+        setInstallError(result.error || 'Install failed')
       }
     } catch (e) {
       setInstallError(String(e))
     } finally {
       setInstalling(false)
     }
-  }, [checkPandoc])
+  }, [checkPandoc, t])
 
-  // 检测中：不阻塞，直接渲染
   if (status === 'checking') return <>{children}</>
   if (status === 'ready') return <>{children}</>
 
@@ -80,15 +76,13 @@ export function PandocGuard({ children }: Props) {
       <Dialog open={status === 'missing'} onOpenChange={() => {}}>
         <DialogContent className="sm:max-w-[440px]" onPointerDownOutside={e => e.preventDefault()}>
           <DialogHeader>
-            <DialogTitle>需要安装 Pandoc</DialogTitle>
-            <DialogDescription>
-              Pandoc 是文档转换引擎，用于 Word 文档的导入导出。请先安装后使用。
-            </DialogDescription>
+            <DialogTitle>{t('pandoc.title')}</DialogTitle>
+            <DialogDescription>{t('pandoc.desc')}</DialogDescription>
           </DialogHeader>
 
           <div className="py-3">
             <pre className="text-xs bg-muted p-3 rounded-md whitespace-pre-wrap select-all">
-              {INSTALL_TIPS[platform]}
+              {t(INSTALL_TIP_KEYS[platform])}
             </pre>
 
             {installError && (
@@ -100,11 +94,11 @@ export function PandocGuard({ children }: Props) {
             {canAutoInstall && (
               <Button onClick={handleAutoInstall} disabled={installing}>
                 {installing && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-                {installing ? '安装中...' : '自动安装'}
+                {installing ? t('pandoc.installing') : t('pandoc.autoInstall')}
               </Button>
             )}
             <Button variant="outline" onClick={checkPandoc}>
-              重新检测
+              {t('pandoc.recheck')}
             </Button>
           </DialogFooter>
         </DialogContent>

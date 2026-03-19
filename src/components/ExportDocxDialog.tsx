@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Button, Label, getSetting,
+  Button, Label,
 } from '@linch-tech/desktop-core'
-import { open } from '@tauri-apps/plugin-dialog'
+import { open, save } from '@tauri-apps/plugin-dialog'
+import { useTranslation } from 'react-i18next'
 import { FileText, Check, Upload } from 'lucide-react'
 
 export type TemplateChoice =
@@ -14,27 +15,26 @@ export type TemplateChoice =
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** 原 docx 文件路径（打开的是 docx 时有值） */
   originalDocxPath?: string
-  onExport: (template: TemplateChoice) => void
+  defaultFileName?: string
+  currentFilePath?: string
+  onExport: (template: TemplateChoice, outputPath: string) => void
 }
 
-export function ExportDocxDialog({ open: isOpen, onOpenChange, originalDocxPath, onExport }: Props) {
+export function ExportDocxDialog({ open: isOpen, onOpenChange, originalDocxPath, defaultFileName, currentFilePath, onExport }: Props) {
+  const { t } = useTranslation()
   const [selected, setSelected] = useState<TemplateChoice>({ type: 'builtin', id: 'default' })
   const [customPath, setCustomPath] = useState<string | null>(null)
 
   useEffect(() => {
     if (isOpen) {
-      // 默认选原文件样式（如果有）
       if (originalDocxPath) {
         setSelected({ type: 'original' })
       } else {
         setSelected({ type: 'builtin', id: 'default' })
       }
-      // 加载自定义模板路径
-      getSetting<string>('docx_template_custom_path').then(v => {
-        if (v) setCustomPath(v)
-      })
+      const v = localStorage.getItem('docx_template_custom_path')
+      if (v) setCustomPath(v)
     }
   }, [isOpen, originalDocxPath])
 
@@ -49,6 +49,26 @@ export function ExportDocxDialog({ open: isOpen, onOpenChange, originalDocxPath,
     }
   }, [])
 
+  const handleExport = useCallback(async () => {
+    // 先选保存位置，默认保存到原文件所在目录
+    const docxName = (defaultFileName || 'untitled').replace(/\.(md|docx)$/i, '') + '.docx'
+    const defaultDir = currentFilePath
+      ? currentFilePath.substring(0, currentFilePath.lastIndexOf('/'))
+      : undefined
+    const defaultPath = defaultDir ? `${defaultDir}/${docxName}` : docxName
+    const filePath = await save({
+      filters: [{ name: 'Word', extensions: ['docx'] }],
+      defaultPath,
+    })
+    if (!filePath) return
+    let outputPath = filePath as string
+    if (!outputPath.toLowerCase().endsWith('.docx')) {
+      outputPath += '.docx'
+    }
+    onOpenChange(false)
+    onExport(selected, outputPath)
+  }, [selected, defaultFileName, currentFilePath, onExport, onOpenChange])
+
   const isSelected = (choice: TemplateChoice) => {
     if (selected.type !== choice.type) return false
     if (selected.type === 'builtin' && choice.type === 'builtin') return selected.id === choice.id
@@ -60,53 +80,49 @@ export function ExportDocxDialog({ open: isOpen, onOpenChange, originalDocxPath,
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[420px]">
         <DialogHeader>
-          <DialogTitle>导出 Word 文档</DialogTitle>
+          <DialogTitle>{t('export.title')}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-2 py-2">
-          <Label className="text-xs text-muted-foreground">选择文档样式模板</Label>
+          <Label className="text-xs text-muted-foreground">{t('export.selectTemplate')}</Label>
 
-          {/* 原文件样式（仅打开 docx 时显示） */}
           {originalDocxPath && (
             <TemplateOption
               selected={isSelected({ type: 'original' })}
               onClick={() => setSelected({ type: 'original' })}
-              title="保留原文件样式"
-              desc="使用打开的 Word 文件自身的样式"
+              title={t('export.keepOriginalStyle')}
+              desc={t('export.keepOriginalStyleDesc')}
             />
           )}
 
-          {/* 内置默认模板 */}
           <TemplateOption
             selected={isSelected({ type: 'builtin', id: 'default' })}
             onClick={() => setSelected({ type: 'builtin', id: 'default' })}
-            title="默认模板"
-            desc="宋体正文、黑体标题、A4 纸张、1.5 倍行距"
+            title={t('export.defaultTemplate')}
+            desc={t('export.defaultTemplateDesc')}
           />
 
-          {/* 自定义模板 */}
           {customPath ? (
             <TemplateOption
               selected={selected.type === 'custom'}
               onClick={() => setSelected({ type: 'custom', path: customPath })}
-              title="自定义模板"
+              title={t('export.customTemplate')}
               desc={customPath.split('/').pop() || customPath}
             />
           ) : null}
 
-          {/* 选择其他模板文件 */}
           <button
             className="w-full flex items-center gap-2 p-2.5 rounded-lg border border-dashed border-border text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors bg-transparent cursor-pointer"
             onClick={handlePickCustom}
           >
             <Upload size={14} />
-            选择其他模板文件...
+            {t('export.selectOtherTemplate')}
           </button>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
-          <Button onClick={() => { onExport(selected); onOpenChange(false) }}>导出</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{t('common.cancel')}</Button>
+          <Button onClick={handleExport}>{t('common.export')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

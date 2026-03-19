@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import Vditor from 'vditor'
 import 'vditor/dist/index.css'
 import { useTheme } from '@linch-tech/desktop-core'
+import { useTranslation } from 'react-i18next'
 import { toolbarIcons } from './toolbar-icons'
 import { EditorToolbarOverlay, type EditorToolbarActions } from './EditorToolbarOverlay'
 
@@ -20,6 +21,7 @@ const Editor = ({ content = '', onChange, zoom = 100, actions }: EditorProps) =>
   onChangeRef.current = onChange
   const contentRef = useRef(content)
   const { theme } = useTheme()
+  const { t: tr, i18n } = useTranslation()
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null)
 
   // Keep contentRef updated so theme switch preserves current edits
@@ -52,9 +54,9 @@ const Editor = ({ content = '', onChange, zoom = 100, actions }: EditorProps) =>
       value: contentRef.current,
       mode: 'wysiwyg',
       theme: isDark ? 'dark' : 'classic',
-      lang: 'zh_CN',
+      lang: i18n.language === 'en' ? 'en_US' : 'zh_CN',
       height: '100%',
-      placeholder: '开始编写...',
+      placeholder: tr('editor.placeholder'),
       typewriterMode: false,
       toolbar,
       toolbarConfig: { pin: true },
@@ -90,7 +92,7 @@ const Editor = ({ content = '', onChange, zoom = 100, actions }: EditorProps) =>
         vditorRef.current = null
       }
     }
-  }, [theme])
+  }, [theme, i18n.language])
 
   const handleMouseEnter = () => { vditorRef.current?.focus() }
 

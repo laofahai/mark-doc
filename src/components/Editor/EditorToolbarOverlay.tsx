@@ -7,6 +7,7 @@ import {
   DropdownMenuSeparator, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem,
   Tooltip, TooltipTrigger, TooltipContent, TooltipProvider,
 } from '@linch-tech/desktop-core'
+import { useTranslation } from 'react-i18next'
 
 export interface EditorToolbarActions {
   onNew: () => void
@@ -15,8 +16,8 @@ export interface EditorToolbarActions {
   onExportDocx: () => void
   onOpen: () => void
   onOpenFolder: () => void
-  pageWidth: string
-  onPageWidthChange: (w: string) => void
+  pageWidth: 'normal' | 'wide' | 'full'
+  onPageWidthChange: (w: 'normal' | 'wide' | 'full') => void
   recentFiles: { path: string; name: string }[]
   openFileFromPath: (path: string, name: string) => void
   removeRecentFile: (path: string) => void
@@ -24,10 +25,10 @@ export interface EditorToolbarActions {
 }
 
 export function EditorToolbarOverlay({ actions }: { actions: EditorToolbarActions }) {
+  const { t } = useTranslation()
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex items-center gap-0.5 pl-1">
-        {/* 文件操作 */}
         <DropdownMenu>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -37,17 +38,17 @@ export function EditorToolbarOverlay({ actions }: { actions: EditorToolbarAction
                 </button>
               </DropdownMenuTrigger>
             </TooltipTrigger>
-            <TooltipContent side="bottom">文件</TooltipContent>
+            <TooltipContent side="bottom">{t('toolbar.file')}</TooltipContent>
           </Tooltip>
           <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem onClick={actions.onNew}><Plus size={14} className="mr-2" /> 新建</DropdownMenuItem>
-            <DropdownMenuItem onClick={actions.onOpen}><FilePlus size={14} className="mr-2" /> 打开文件...</DropdownMenuItem>
-            <DropdownMenuItem onClick={actions.onOpenFolder}><FolderOpen size={14} className="mr-2" /> 打开文件夹...</DropdownMenuItem>
+            <DropdownMenuItem onClick={actions.onNew}><Plus size={14} className="mr-2" /> {t('toolbar.newFile')}</DropdownMenuItem>
+            <DropdownMenuItem onClick={actions.onOpen}><FilePlus size={14} className="mr-2" /> {t('toolbar.openFile')}</DropdownMenuItem>
+            <DropdownMenuItem onClick={actions.onOpenFolder}><FolderOpen size={14} className="mr-2" /> {t('toolbar.openFolder')}</DropdownMenuItem>
             {actions.recentFiles.length > 0 && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="flex items-center justify-between py-1">
-                  <span className="flex items-center gap-1 text-[11px]"><Clock size={10} /> 最近</span>
+                  <span className="flex items-center gap-1 text-[11px]"><Clock size={10} /> {t('toolbar.recent')}</span>
                   <button className="p-0.5 rounded text-muted-foreground hover:text-destructive cursor-pointer border-none bg-transparent" onClick={(e) => { e.stopPropagation(); actions.clearRecentFiles() }}><Trash2 size={10} /></button>
                 </DropdownMenuLabel>
                 {actions.recentFiles.map(f => (
@@ -62,7 +63,6 @@ export function EditorToolbarOverlay({ actions }: { actions: EditorToolbarAction
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* 保存 */}
         <DropdownMenu>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -72,17 +72,16 @@ export function EditorToolbarOverlay({ actions }: { actions: EditorToolbarAction
                 </button>
               </DropdownMenuTrigger>
             </TooltipTrigger>
-            <TooltipContent side="bottom">保存</TooltipContent>
+            <TooltipContent side="bottom">{t('toolbar.save')}</TooltipContent>
           </Tooltip>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={actions.onSave}><Save size={14} className="mr-2" /> 保存 (⌘S)</DropdownMenuItem>
+            <DropdownMenuItem onClick={actions.onSave}><Save size={14} className="mr-2" /> {t('toolbar.saveShortcut')}</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={actions.onExportMd}>导出 .md</DropdownMenuItem>
-            <DropdownMenuItem onClick={actions.onExportDocx}>导出 .docx</DropdownMenuItem>
+            <DropdownMenuItem onClick={actions.onExportMd}>{t('toolbar.exportMd')}</DropdownMenuItem>
+            <DropdownMenuItem onClick={actions.onExportDocx}>{t('toolbar.exportDocx')}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* 页面宽度 */}
         <DropdownMenu>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -92,13 +91,13 @@ export function EditorToolbarOverlay({ actions }: { actions: EditorToolbarAction
                 </button>
               </DropdownMenuTrigger>
             </TooltipTrigger>
-            <TooltipContent side="bottom">页面宽度</TooltipContent>
+            <TooltipContent side="bottom">{t('toolbar.pageWidth')}</TooltipContent>
           </Tooltip>
           <DropdownMenuContent align="end">
-            <DropdownMenuRadioGroup value={actions.pageWidth} onValueChange={actions.onPageWidthChange}>
-              <DropdownMenuRadioItem value="normal">标准宽度</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="wide">宽屏</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="full">全宽</DropdownMenuRadioItem>
+            <DropdownMenuRadioGroup value={actions.pageWidth} onValueChange={v => actions.onPageWidthChange(v as 'normal' | 'wide' | 'full')}>
+              <DropdownMenuRadioItem value="normal">{t('toolbar.widthNormal')}</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="wide">{t('toolbar.widthWide')}</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="full">{t('toolbar.widthFull')}</DropdownMenuRadioItem>
             </DropdownMenuRadioGroup>
           </DropdownMenuContent>
         </DropdownMenu>

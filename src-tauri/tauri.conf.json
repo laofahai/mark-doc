@@ -1,7 +1,7 @@
 {
-  "productName": "playground",
+  "productName": "MarkDoc",
   "version": "0.1.2",
-  "identifier": "tech.linch.playground",
+  "identifier": "tech.linch.markdoc",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "beforeBuildCommand": "pnpm build",
@@ -11,7 +11,7 @@
   "app": {
     "windows": [
       {
-        "title": "Linch Desktop Core - Playground",
+        "title": "MarkDoc",
         "width": 1200,
         "height": 800,
         "decorations": false,
@@ -33,6 +33,18 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["docx"],
+        "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "description": "Word Document"
+      },
+{
+        "ext": ["md", "markdown"],
+        "mimeType": "text/markdown",
+        "description": "Markdown Document"
+      }
     ]
   },
   "plugins": {
@@ -42,7 +54,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhCQUU4Rjg4NUQ1RTQxODgKUldTSVFWNWRpSSt1aXlpUnlYa1FXQ29PSmNCZ05tUHYzM0xrSGRub2VSbk9vSHRPb0Qvd2JibGkK",
       "endpoints": [
-        "https://github.com/laofahai/linch-desktop-core/releases/latest/download/latest.json"
+        "https://github.com/laofahai/mark-doc/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"
