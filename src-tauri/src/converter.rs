@@ -1,6 +1,23 @@
 use std::process::Command;
 use tauri::Manager;
 
+/// 用 `which` 查找可执行文件的绝对路径，解决 GUI 启动时 PATH 不完整问题
+fn find_bin(name: &str) -> String {
+    #[cfg(unix)]
+    {
+        if let Ok(output) = Command::new("which").arg(name).output() {
+            if output.status.success() {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !path.is_empty() {
+                    return path;
+                }
+            }
+        }
+    }
+    // 找不到就回退到名字本身，让系统自己找
+    name.to_string()
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct ConversionResult {
     pub success: bool,
@@ -33,7 +50,7 @@ pub async fn pandoc_convert(
 ) -> Result<ConversionResult, String> {
     use std::io::Write;
 
-    let mut cmd = Command::new("pandoc");
+    let mut cmd = Command::new(find_bin("pandoc"));
     cmd.arg("-f").arg(&from)
         .arg("-t").arg(&to)
         .arg("--wrap=none")
@@ -75,7 +92,7 @@ pub async fn pandoc_convert_file(
     output_path: String,
     extra_args: Option<Vec<String>>,
 ) -> Result<ConversionResult, String> {
-    let mut cmd = Command::new("pandoc");
+    let mut cmd = Command::new(find_bin("pandoc"));
     cmd.arg(&input_path)
         .arg("-o")
         .arg(&output_path)
@@ -127,7 +144,7 @@ pub async fn pandoc_convert_file(
 pub async fn pandoc_docx_to_markdown(
     input_path: String,
 ) -> Result<ConversionResult, String> {
-    let output = Command::new("pandoc")
+    let output = Command::new(find_bin("pandoc"))
         .arg(&input_path)
         .arg("-t").arg("markdown-simple_tables-multiline_tables-grid_tables+pipe_tables")
         .arg("--wrap=none")
@@ -156,7 +173,7 @@ pub async fn pandoc_docx_to_markdown(
 pub async fn pandoc_docx_to_html(
     input_path: String,
 ) -> Result<ConversionResult, String> {
-    let output = Command::new("pandoc")
+    let output = Command::new(find_bin("pandoc"))
         .arg(&input_path)
         .arg("-t").arg("html")
         .arg("--wrap=none")
@@ -183,7 +200,7 @@ pub async fn pandoc_docx_to_html(
 /// 检测 pandoc 是否可用，返回版本号
 #[tauri::command]
 pub fn check_pandoc_available() -> Result<Option<String>, String> {
-    match Command::new("pandoc").arg("--version").output() {
+    match Command::new(find_bin("pandoc")).arg("--version").output() {
         Ok(output) => {
             if output.status.success() {
                 let version_str = String::from_utf8_lossy(&output.stdout);
@@ -207,9 +224,9 @@ pub async fn install_pandoc() -> Result<ConversionResult, String> {
     #[cfg(target_os = "macos")]
     {
         // 先尝试 brew
-        let brew_check = Command::new("brew").arg("--version").output();
+        let brew_check = Command::new(find_bin("brew")).arg("--version").output();
         if brew_check.is_ok() && brew_check.unwrap().status.success() {
-            let output = Command::new("brew")
+            let output = Command::new(find_bin("brew"))
                 .arg("install")
                 .arg("pandoc")
                 .stdout(std::process::Stdio::piped())
