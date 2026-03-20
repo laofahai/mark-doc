@@ -29,4 +29,5 @@ export const toolbarIcons: Record<string, string> = {
   save: s('<path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/>'),
   'file-plus': s('<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M9 15h6"/><path d="M12 18v-6"/>'),
   'align-justify': s('<path d="M3 12h18"/><path d="M3 18h18"/><path d="M3 6h18"/>'),
+  'font-color': s('<path d="M4 20h16"/><path d="m5.5 16 6.5-14 6.5 14"/><path d="M8.3 12h7.4"/>'),
 }

@@ -21,10 +21,12 @@ async function removeTempFile(path: string) {
  *   - 无值：后端自动使用内置 reference.docx
  */
 export async function convertMdToDocx(markdown: string, outputPath: string, referenceDocxPath?: string): Promise<boolean> {
+  console.log('[convertMdToDocx] outputPath:', outputPath, 'refPath:', referenceDocxPath)
   // 预处理：将 mermaid 等图表代码块渲染为 PNG 临时文件
   const outputDir = outputPath.substring(0, outputPath.lastIndexOf('/'))
   const { markdown: processedMd, tempFiles } = await preprocessForExport(markdown, outputDir)
   const tempMdPath = outputPath.replace(/\.docx$/i, '.tmp.md')
+  console.log('[convertMdToDocx] tempMdPath:', tempMdPath, 'content length:', processedMd.length)
   await writeTextFile(tempMdPath, processedMd)
   try {
     const extraArgs: string[] = []
@@ -38,8 +40,7 @@ export async function convertMdToDocx(markdown: string, outputPath: string, refe
       extraArgs: extraArgs.length > 0 ? extraArgs : null,
     })
     if (!result.success) {
-      console.error('Pandoc convert failed:', result.error)
-      return false
+      throw new Error(result.error || 'Pandoc conversion failed')
     }
     return true
   } finally {

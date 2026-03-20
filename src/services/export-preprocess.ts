@@ -29,8 +29,9 @@ async function getMermaid(): Promise<any> {
 async function svgToPngBuffer(svgStr: string, scale = 2): Promise<ArrayBuffer> {
   return new Promise((resolve, reject) => {
     const img = new Image()
-    const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' })
-    const url = URL.createObjectURL(svgBlob)
+    // 将 SVG 编码为 data URI 避免 blob URL 跨域导致 canvas tainted
+    const encoded = btoa(unescape(encodeURIComponent(svgStr)))
+    const dataUri = `data:image/svg+xml;base64,${encoded}`
 
     img.onload = () => {
       const canvas = document.createElement('canvas')
@@ -39,7 +40,6 @@ async function svgToPngBuffer(svgStr: string, scale = 2): Promise<ArrayBuffer> {
       const ctx = canvas.getContext('2d')!
       ctx.scale(scale, scale)
       ctx.drawImage(img, 0, 0)
-      URL.revokeObjectURL(url)
       canvas.toBlob(blob => {
         if (!blob) return reject(new Error('Canvas toBlob failed'))
         blob.arrayBuffer().then(resolve).catch(reject)
@@ -47,11 +47,10 @@ async function svgToPngBuffer(svgStr: string, scale = 2): Promise<ArrayBuffer> {
     }
 
     img.onerror = () => {
-      URL.revokeObjectURL(url)
       reject(new Error('SVG to image failed'))
     }
 
-    img.src = url
+    img.src = dataUri
   })
 }
 

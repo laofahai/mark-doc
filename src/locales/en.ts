@@ -19,6 +19,7 @@ export default {
     language: 'Language',
     theme: 'Theme',
     done: 'Done',
+    apply: 'Apply',
   },
   toolbar: {
     file: 'File',
@@ -41,6 +42,8 @@ export default {
     externalChange: '"{{fileName}}" has been modified externally',
     reload: 'Reload',
     ignore: 'Ignore',
+    fontColor: 'Font Color',
+    clearColor: 'Clear Color',
   },
   settings: {
     title: 'Settings',
@@ -62,6 +65,8 @@ export default {
     defaultTemplateDesc: 'Song body, bold headings, A4 paper, 1.5x spacing',
     customTemplate: 'Custom Template',
     selectOtherTemplate: 'Select Other Template...',
+    saveTo: 'Save to',
+    selectSavePath: 'Select save path...',
   },
   close: {
     title: 'Unsaved Changes',

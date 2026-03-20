@@ -19,6 +19,7 @@ export default {
     language: '语言',
     theme: '主题',
     done: '完成',
+    apply: '应用',
   },
   toolbar: {
     file: '文件',
@@ -41,6 +42,8 @@ export default {
     externalChange: '「{{fileName}}」已被外部程序修改',
     reload: '重新加载',
     ignore: '忽略',
+    fontColor: '文字颜色',
+    clearColor: '清除颜色',
   },
   settings: {
     title: '设置',
@@ -62,6 +65,8 @@ export default {
     defaultTemplateDesc: '宋体正文、黑体标题、A4 纸张、1.5 倍行距',
     customTemplate: '自定义模板',
     selectOtherTemplate: '选择其他模板文件...',
+    saveTo: '保存位置',
+    selectSavePath: '选择保存路径...',
   },
   close: {
     title: '未保存的更改',

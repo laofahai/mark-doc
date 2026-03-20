@@ -7,6 +7,21 @@ import { open, save } from '@tauri-apps/plugin-dialog'
 import { useTranslation } from 'react-i18next'
 import { FileText, Check, Upload } from 'lucide-react'
 
+/** 缩短路径显示：保留首段 + 最后一个目录 + 文件名，中间用 … 代替 */
+function shortenPath(p: string, maxLen = 45): string {
+  if (p.length <= maxLen) return p
+  const sep = p.includes('\\') ? '\\' : '/'
+  const parts = p.split(sep)
+  const fileName = parts.pop() || ''
+  if (parts.length <= 2) return p
+  const first = parts[0] || ''
+  const second = parts[1] || ''
+  const lastDir = parts.pop() || ''
+  const prefix = first + sep + second
+  const shortened = `${prefix}${sep}…${sep}${lastDir}${sep}${fileName}`
+  return shortened.length < p.length ? shortened : p
+}
+
 export type TemplateChoice =
   | { type: 'builtin'; id: string }
   | { type: 'original' }
@@ -21,10 +36,13 @@ interface Props {
   onExport: (template: TemplateChoice, outputPath: string) => void
 }
 
+const LAST_EXPORT_DIR_KEY = 'mark-doc-last-export-dir'
+
 export function ExportDocxDialog({ open: isOpen, onOpenChange, originalDocxPath, defaultFileName, currentFilePath, onExport }: Props) {
   const { t } = useTranslation()
   const [selected, setSelected] = useState<TemplateChoice>({ type: 'builtin', id: 'default' })
   const [customPath, setCustomPath] = useState<string | null>(null)
+  const [outputPath, setOutputPath] = useState<string>('')
 
   useEffect(() => {
     if (isOpen) {
@@ -35,8 +53,17 @@ export function ExportDocxDialog({ open: isOpen, onOpenChange, originalDocxPath,
       }
       const v = localStorage.getItem('docx_template_custom_path')
       if (v) setCustomPath(v)
+
+      // 计算默认保存路径
+      const docxName = (defaultFileName || 'untitled').replace(/\.(md|docx)$/i, '') + '.docx'
+      const lastDir = localStorage.getItem(LAST_EXPORT_DIR_KEY)
+      const sourceDir = currentFilePath
+        ? currentFilePath.substring(0, currentFilePath.lastIndexOf('/'))
+        : undefined
+      const dir = lastDir || sourceDir
+      setOutputPath(dir ? `${dir}/${docxName}` : docxName)
     }
-  }, [isOpen, originalDocxPath])
+  }, [isOpen, originalDocxPath, defaultFileName, currentFilePath])
 
   const handlePickCustom = useCallback(async () => {
     const filePath = await open({
@@ -49,25 +76,26 @@ export function ExportDocxDialog({ open: isOpen, onOpenChange, originalDocxPath,
     }
   }, [])
 
-  const handleExport = useCallback(async () => {
-    // 先选保存位置，默认保存到原文件所在目录
-    const docxName = (defaultFileName || 'untitled').replace(/\.(md|docx)$/i, '') + '.docx'
-    const defaultDir = currentFilePath
-      ? currentFilePath.substring(0, currentFilePath.lastIndexOf('/'))
-      : undefined
-    const defaultPath = defaultDir ? `${defaultDir}/${docxName}` : docxName
+  const handlePickOutputPath = useCallback(async () => {
     const filePath = await save({
       filters: [{ name: 'Word', extensions: ['docx'] }],
-      defaultPath,
+      defaultPath: outputPath || undefined,
     })
-    if (!filePath) return
-    let outputPath = filePath as string
-    if (!outputPath.toLowerCase().endsWith('.docx')) {
-      outputPath += '.docx'
+    if (filePath) {
+      let p = filePath as string
+      if (!p.toLowerCase().endsWith('.docx')) p += '.docx'
+      setOutputPath(p)
+      // 记住目录
+      const dir = p.substring(0, p.lastIndexOf('/'))
+      if (dir) localStorage.setItem(LAST_EXPORT_DIR_KEY, dir)
     }
+  }, [outputPath])
+
+  const handleExport = useCallback(async () => {
+    if (!outputPath) return
     onOpenChange(false)
     onExport(selected, outputPath)
-  }, [selected, defaultFileName, currentFilePath, onExport, onOpenChange])
+  }, [selected, outputPath, onExport, onOpenChange])
 
   const isSelected = (choice: TemplateChoice) => {
     if (selected.type !== choice.type) return false
@@ -120,9 +148,22 @@ export function ExportDocxDialog({ open: isOpen, onOpenChange, originalDocxPath,
           </button>
         </div>
 
+        {/* 保存位置 */}
+        <div className="space-y-1.5 py-1">
+          <Label className="text-xs text-muted-foreground">{t('export.saveTo')}</Label>
+          <div
+            className="flex items-center gap-2 p-2 rounded-lg border border-border text-xs cursor-pointer hover:bg-accent/50 transition-colors"
+            onClick={handlePickOutputPath}
+          >
+            <FileText size={14} className="shrink-0 text-muted-foreground" />
+            <span className="truncate flex-1 text-foreground" title={outputPath}>{outputPath ? shortenPath(outputPath) : t('export.selectSavePath')}</span>
+            <Upload size={12} className="shrink-0 text-muted-foreground" />
+          </div>
+        </div>
+
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t('common.cancel')}</Button>
-          <Button onClick={handleExport}>{t('common.export')}</Button>
+          <Button onClick={handleExport} disabled={!outputPath}>{t('common.export')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
