@@ -68,6 +68,49 @@ export default {
     saveTo: 'Save to',
     selectSavePath: 'Select save path...',
   },
+  document: {
+    saveAsMarkDoc: 'Save as MarkDoc document',
+    saveAsMarkdown: 'Save as Markdown',
+    suggestPackage: 'Save as a MarkDoc document to bundle resources',
+  },
+  workspace: {
+    recoveryAvailable: 'A recoverable document draft was found',
+  },
+  assets: {
+    extractEmbeddedImages: 'Extract embedded images',
+    remoteBlocked: 'Remote resource blocked',
+  },
+  presentation: {
+    chineseFormal: 'Chinese Formal Document',
+    referenceDocx: 'Word style template',
+  },
+  import: {
+    docxAsWorkspace: 'Word document imported as an editable document',
+  },
+  package: {
+    invalidManifest: 'Invalid MarkDoc document manifest',
+    corruptedRecovery: 'The document package is corrupted; safe recovery mode is active',
+  },
+  security: {
+    enableRemoteForDocument: 'Allow this document to load remote resources',
+    enableRemoteImages: 'Allow remote images',
+    quarantineResource: 'This resource has been quarantined',
+  },
+  recovery: {
+    retrySave: 'Retry save',
+    saveAs: 'Save as',
+    restoreDraft: 'Restore draft',
+    discardDraft: 'Discard draft',
+  },
+  errors: {
+    package: {
+      invalidManifest: 'Invalid MarkDoc document manifest: {{path}}',
+      unsafePath: 'Document package contains an unsafe path: {{path}}',
+    },
+    save: {
+      failed: 'Save failed, but current content is preserved in a recovery draft',
+    },
+  },
   close: {
     title: 'Unsaved Changes',
     message: '"{{fileName}}" has unsaved changes. Save now?',

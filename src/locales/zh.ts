@@ -68,6 +68,49 @@ export default {
     saveTo: '保存位置',
     selectSavePath: '选择保存路径...',
   },
+  document: {
+    saveAsMarkDoc: '保存为 MarkDoc 文档',
+    saveAsMarkdown: '保存为 Markdown',
+    suggestPackage: '建议保存为 MarkDoc 文档以便打包资源',
+  },
+  workspace: {
+    recoveryAvailable: '检测到可恢复的文档草稿',
+  },
+  assets: {
+    extractEmbeddedImages: '提取内嵌图片',
+    remoteBlocked: '远程资源已被阻止',
+  },
+  presentation: {
+    chineseFormal: '中文正式文档',
+    referenceDocx: 'Word 样式模板',
+  },
+  import: {
+    docxAsWorkspace: 'Word 文档已导入为可编辑文档',
+  },
+  package: {
+    invalidManifest: 'MarkDoc 文档清单无效',
+    corruptedRecovery: '文档包已损坏，已进入安全恢复模式',
+  },
+  security: {
+    enableRemoteForDocument: '允许此文档加载远程资源',
+    enableRemoteImages: '允许远程图片',
+    quarantineResource: '此资源已被隔离',
+  },
+  recovery: {
+    retrySave: '重试保存',
+    saveAs: '另存为',
+    restoreDraft: '恢复草稿',
+    discardDraft: '丢弃草稿',
+  },
+  errors: {
+    package: {
+      invalidManifest: 'MarkDoc 文档清单无效：{{path}}',
+      unsafePath: '文档包包含不安全路径：{{path}}',
+    },
+    save: {
+      failed: '保存失败，但当前内容已保留在恢复草稿中',
+    },
+  },
   close: {
     title: '未保存的更改',
     message: '「{{fileName}}」有未保存的更改，是否保存？',
