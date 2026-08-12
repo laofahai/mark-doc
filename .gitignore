@@ -7,3 +7,4 @@ src-tauri/target
 .DS_Store
 .vite
 src-tauri/.keys
+.worktrees/
