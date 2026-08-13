@@ -18,9 +18,10 @@ interface ImportBytesOptions {
 const MD_IMAGE_RE = /!\[[^\]]*\]\(([^)]+)\)/g
 const HTML_IMG_RE = /<img\s[^>]*src=["']([^"']+)["'][^>]*>/g
 const BASE64_IMAGE_RE = /data:image\/[a-zA-Z0-9.+-]+;base64,/i
+const MD_BASE64_IMAGE_RE = /(!\[[^\]]*\]\()((?:data:image\/[a-zA-Z0-9.+-]+;base64,)[^)]+)(\))/gi
 
-function isRemoteOrData(path: string) {
-  return /^(https?:|data:|file:)/i.test(path)
+function isExternalReference(path: string) {
+  return path.startsWith('//') || /^[a-z][a-z0-9+.-]*:/i.test(path)
 }
 
 function slugifyName(name: string) {
@@ -55,10 +56,21 @@ export function findLocalAssetReferences(markdown: string) {
     let match: RegExpExecArray | null
     while ((match = re.exec(markdown)) !== null) {
       const path = match[1].trim()
-      if (path && !isRemoteOrData(path)) refs.add(path)
+      if (path && !isExternalReference(path)) refs.add(path)
     }
   }
   return [...refs]
+}
+
+export function rewriteBase64ImageReferences(
+  markdown: string,
+  replacements: Record<string, string>,
+) {
+  return markdown.replace(MD_BASE64_IMAGE_RE, (match, prefix: string, dataUri: string, suffix: string) => {
+    const replacement = replacements[dataUri]
+    if (!replacement || isExternalReference(replacement)) return match
+    return `${prefix}${replacement}${suffix}`
+  })
 }
 
 export class AssetManager {
