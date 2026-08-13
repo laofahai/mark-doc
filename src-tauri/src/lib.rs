@@ -3,6 +3,7 @@ use tauri::{Manager, Emitter};
 use std::sync::Mutex;
 
 mod converter;
+mod package;
 
 /// 缓存冷启动时通过文件关联传入的路径（前端尚未就绪时暂存）
 struct PendingFiles(Mutex<Vec<String>>);
@@ -45,6 +46,8 @@ pub fn run() {
             converter::pandoc_docx_to_markdown,
             converter::check_pandoc_available,
             converter::install_pandoc,
+            package::reader::read_mdoc_package,
+            package::writer::write_mdoc_package,
             take_pending_files,
         ])
         .with_linch_desktop(config)
