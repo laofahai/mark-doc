@@ -31,40 +31,54 @@ pub fn write_mdoc_package(input: PackageWriteInput) -> Result<PackageWriteResult
     let manifest = MarkDocManifest::new(&input.entry);
     manifest.validate()?;
 
+    if input
+        .files
+        .iter()
+        .filter(|path| *path == &input.entry)
+        .count()
+        != 1
+    {
+        return Err("package.missingEntry".to_string());
+    }
+    if input.files.iter().any(|path| !is_safe_package_path(path)) {
+        return Err("package.unsafePath".to_string());
+    }
+
     let file = File::create(&tmp_path).map_err(|_| "save.failed".to_string())?;
-    let mut zip = zip::ZipWriter::new(file);
-    let options = SimpleFileOptions::default();
+    let write_result = (|| {
+        let mut zip = zip::ZipWriter::new(file);
+        let options = SimpleFileOptions::default();
 
-    let manifest_json =
-        serde_json::to_vec_pretty(&manifest).map_err(|_| "package.invalidManifest".to_string())?;
-    zip.start_file("manifest.json", options)
-        .map_err(|_| "save.failed".to_string())?;
-    zip.write_all(&manifest_json)
-        .map_err(|_| "save.failed".to_string())?;
+        let manifest_json = serde_json::to_vec_pretty(&manifest)
+            .map_err(|_| "package.invalidManifest".to_string())?;
+        zip.start_file("manifest.json", options)
+            .map_err(|_| "save.failed".to_string())?;
+        zip.write_all(&manifest_json)
+            .map_err(|_| "save.failed".to_string())?;
 
-    for package_path in input.files {
-        if !is_safe_package_path(&package_path) {
-            return Err("package.unsafePath".to_string());
+        for package_path in &input.files {
+            let absolute_path = workspace_root.join(package_path);
+            let mut bytes = Vec::new();
+            File::open(&absolute_path)
+                .map_err(|_| "package.missingEntry".to_string())?
+                .read_to_end(&mut bytes)
+                .map_err(|_| "package.readFailed".to_string())?;
+            zip.start_file(package_path, options)
+                .map_err(|_| "save.failed".to_string())?;
+            zip.write_all(&bytes)
+                .map_err(|_| "save.failed".to_string())?;
         }
-        let absolute_path = workspace_root.join(&package_path);
-        let mut bytes = Vec::new();
-        File::open(&absolute_path)
-            .map_err(|_| "package.missingEntry".to_string())?
-            .read_to_end(&mut bytes)
-            .map_err(|_| "package.readFailed".to_string())?;
-        zip.start_file(package_path, options)
-            .map_err(|_| "save.failed".to_string())?;
-        zip.write_all(&bytes)
-            .map_err(|_| "save.failed".to_string())?;
+
+        zip.finish().map_err(|_| "save.failed".to_string())?;
+        Ok(())
+    })();
+
+    if let Err(error) = write_result {
+        let _ = fs::remove_file(&tmp_path);
+        return Err(error);
     }
 
-    zip.finish().map_err(|_| "save.failed".to_string())?;
-
-    if output_path.exists() {
-        fs::copy(&output_path, &recovery_path).map_err(|_| "save.recoveryFailed".to_string())?;
-    }
-
-    fs::rename(&tmp_path, &output_path).map_err(|_| "save.failed".to_string())?;
+    replace_package(&tmp_path, &output_path, &recovery_path)?;
 
     Ok(PackageWriteResult {
         output_path: input.output_path,
@@ -75,10 +89,37 @@ pub fn write_mdoc_package(input: PackageWriteInput) -> Result<PackageWriteResult
     })
 }
 
+fn replace_package(
+    tmp_path: &PathBuf,
+    output_path: &PathBuf,
+    recovery_path: &PathBuf,
+) -> Result<(), String> {
+    if !output_path.exists() {
+        return fs::rename(tmp_path, output_path).map_err(|_| "save.failed".to_string());
+    }
+
+    fs::copy(output_path, recovery_path).map_err(|_| "save.recoveryFailed".to_string())?;
+    fs::remove_file(output_path).map_err(|_| "save.failed".to_string())?;
+
+    if fs::rename(tmp_path, output_path).is_ok() {
+        return Ok(());
+    }
+
+    let restore_result = fs::copy(recovery_path, output_path);
+    let _ = fs::remove_file(tmp_path);
+    if restore_result.is_err() {
+        return Err("save.recoveryFailed".to_string());
+    }
+
+    Err("save.failed".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
+    use std::io::Read;
+    use zip::ZipArchive;
 
     #[test]
     fn writes_manifest_and_entry() {
@@ -98,5 +139,105 @@ mod tests {
 
         assert!(output.exists());
         assert_eq!(result.output_path, output.to_string_lossy());
+
+        let file = File::open(&output).unwrap();
+        let mut archive = ZipArchive::new(file).unwrap();
+        let mut manifest = String::new();
+        archive
+            .by_name("manifest.json")
+            .unwrap()
+            .read_to_string(&mut manifest)
+            .unwrap();
+        let mut document = String::new();
+        archive
+            .by_name("document.md")
+            .unwrap()
+            .read_to_string(&mut document)
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<MarkDocManifest>(&manifest)
+                .unwrap()
+                .entry,
+            "document.md"
+        );
+        assert_eq!(document, "# Hello");
+    }
+
+    #[test]
+    fn requires_the_entry_once_in_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("workspace");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("document.md"), "# Hello").unwrap();
+        let output = dir.path().join("report.mdoc");
+
+        for files in [
+            vec![],
+            vec!["document.md".to_string(), "document.md".to_string()],
+        ] {
+            assert_eq!(
+                write_mdoc_package(PackageWriteInput {
+                    workspace_root: root.to_string_lossy().to_string(),
+                    output_path: output.to_string_lossy().to_string(),
+                    entry: "document.md".to_string(),
+                    files,
+                })
+                .unwrap_err(),
+                "package.missingEntry"
+            );
+        }
+    }
+
+    #[test]
+    fn replaces_existing_package_and_retains_recovery_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("workspace");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("document.md"), "# New").unwrap();
+        let output = dir.path().join("report.mdoc");
+        fs::write(&output, "previous package").unwrap();
+
+        write_mdoc_package(PackageWriteInput {
+            workspace_root: root.to_string_lossy().to_string(),
+            output_path: output.to_string_lossy().to_string(),
+            entry: "document.md".to_string(),
+            files: vec!["document.md".to_string()],
+        })
+        .unwrap();
+
+        assert_eq!(
+            fs::read(output.with_extension("mdoc.bak")).unwrap(),
+            b"previous package"
+        );
+        let mut document = String::new();
+        ZipArchive::new(File::open(&output).unwrap())
+            .unwrap()
+            .by_name("document.md")
+            .unwrap()
+            .read_to_string(&mut document)
+            .unwrap();
+        assert_eq!(document, "# New");
+    }
+
+    #[test]
+    fn cleans_up_partial_temp_file_after_write_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("workspace");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("document.md"), "# Hello").unwrap();
+        let output = dir.path().join("report.mdoc");
+
+        assert_eq!(
+            write_mdoc_package(PackageWriteInput {
+                workspace_root: root.to_string_lossy().to_string(),
+                output_path: output.to_string_lossy().to_string(),
+                entry: "document.md".to_string(),
+                files: vec!["document.md".to_string(), "missing.png".to_string()],
+            })
+            .unwrap_err(),
+            "package.missingEntry"
+        );
+        assert!(!output.with_extension("mdoc.tmp").exists());
+        assert!(!output.exists());
     }
 }
