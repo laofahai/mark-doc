@@ -103,6 +103,9 @@ export default {
     discardDraft: '丢弃草稿',
   },
   errors: {
+    workspace: {
+      noRoot: '文档工作区没有文件系统根目录',
+    },
     package: {
       invalidManifest: 'MarkDoc 文档清单无效：{{path}}',
       unsafePath: '文档包包含不安全路径：{{path}}',

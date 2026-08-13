@@ -103,6 +103,9 @@ export default {
     discardDraft: 'Discard draft',
   },
   errors: {
+    workspace: {
+      noRoot: 'Workspace has no filesystem root',
+    },
     package: {
       invalidManifest: 'Invalid MarkDoc document manifest: {{path}}',
       unsafePath: 'Document package contains an unsafe path: {{path}}',
