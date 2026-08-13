@@ -5,6 +5,11 @@ import { vi } from 'vitest'
 vi.mock('@tauri-apps/plugin-fs', () => ({
   readTextFile: vi.fn(),
   writeTextFile: vi.fn(),
+  writeFile: vi.fn(),
+  readFile: vi.fn(),
+  mkdir: vi.fn(),
+  remove: vi.fn(),
+  watch: vi.fn(),
 }))
 
 vi.mock('@tauri-apps/plugin-dialog', () => ({
