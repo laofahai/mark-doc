@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::fs::OpenOptions;
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -21,6 +23,7 @@ fn normalize_imported_media_paths(
     workspace_root: &Path,
     media_root: &Path,
     assets_root: &Path,
+    relocated_media: &BTreeMap<PathBuf, PathBuf>,
 ) -> String {
     let link_pattern = regex::Regex::new(
         r"(?P<prefix>!?\[[^\]]*\]\()(?P<destination><[^>\n]+>|[^)\s]+)(?P<suffix>(?:\s+[^)]*)?\))",
@@ -38,6 +41,7 @@ fn normalize_imported_media_paths(
                     workspace_root,
                     media_root,
                     assets_root,
+                    relocated_media,
                 ),
                 &captures["suffix"]
             )
@@ -50,6 +54,7 @@ fn normalize_imported_media_destination(
     workspace_root: &Path,
     media_root: &Path,
     assets_root: &Path,
+    relocated_media: &BTreeMap<PathBuf, PathBuf>,
 ) -> String {
     let (path, wrapped) = destination
         .strip_prefix('<')
@@ -66,6 +71,24 @@ fn normalize_imported_media_destination(
             .ok()
             .filter(|relative| !relative.as_os_str().is_empty())
             .unwrap_or(Path::new("assets"));
+
+        let staged_relative_path = if source_path.is_absolute() {
+            source_path.strip_prefix(media_root).ok()
+        } else if source_path.starts_with("media") {
+            Some(source_path)
+        } else {
+            None
+        };
+
+        if let Some(final_relative_path) =
+            staged_relative_path.and_then(|relative_path| relocated_media.get(relative_path))
+        {
+            return wrap_markdown_destination(
+                markdown_path_string(&workspace_assets_path.join(final_relative_path))
+                    .unwrap_or_else(|| path.to_string()),
+                wrapped,
+            );
+        }
 
         if source_path.is_absolute() {
             source_path
@@ -91,10 +114,14 @@ fn normalize_imported_media_destination(
         }
     };
 
+    wrap_markdown_destination(normalized, wrapped)
+}
+
+fn wrap_markdown_destination(destination: String, wrapped: bool) -> String {
     if wrapped {
-        format!("<{}>", normalized)
+        format!("<{}>", destination)
     } else {
-        normalized
+        destination
     }
 }
 
@@ -170,32 +197,151 @@ fn create_unique_import_staging_directory(workspace_path: &Path) -> Result<PathB
     Err("workspace.createFailed".to_string())
 }
 
-fn merge_staged_media(staging_path: &Path, assets_path: &Path) -> Result<(), String> {
+fn merge_staged_media(
+    staging_path: &Path,
+    assets_path: &Path,
+) -> Result<BTreeMap<PathBuf, PathBuf>, String> {
     fs::create_dir_all(assets_path).map_err(|_| "workspace.createFailed".to_string())?;
-    copy_staged_media(staging_path, assets_path)?;
-    fs::remove_dir_all(staging_path).map_err(|_| "workspace.writeFailed".to_string())
+    let mut relocated_media = BTreeMap::new();
+    copy_staged_media(
+        staging_path,
+        staging_path,
+        assets_path,
+        assets_path,
+        &mut relocated_media,
+    )?;
+    fs::remove_dir_all(staging_path).map_err(|_| "workspace.writeFailed".to_string())?;
+    Ok(relocated_media)
 }
 
-fn copy_staged_media(source_directory: &Path, target_directory: &Path) -> Result<(), String> {
-    for entry in fs::read_dir(source_directory).map_err(|_| "workspace.writeFailed".to_string())? {
-        let entry = entry.map_err(|_| "workspace.writeFailed".to_string())?;
+fn copy_staged_media(
+    source_root: &Path,
+    source_directory: &Path,
+    target_root: &Path,
+    target_directory: &Path,
+    relocated_media: &mut BTreeMap<PathBuf, PathBuf>,
+) -> Result<(), String> {
+    let mut entries = fs::read_dir(source_directory)
+        .map_err(|_| "workspace.writeFailed".to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| "workspace.writeFailed".to_string())?;
+    entries.sort_by_key(|entry| entry.file_name());
+
+    for entry in entries {
         let source_path = entry.path();
-        let target_path = target_directory.join(entry.file_name());
         let file_type = entry
             .file_type()
             .map_err(|_| "workspace.writeFailed".to_string())?;
 
         if file_type.is_dir() {
-            fs::create_dir_all(&target_path).map_err(|_| "workspace.createFailed".to_string())?;
-            copy_staged_media(&source_path, &target_path)?;
+            let target_path =
+                create_or_select_destination_directory(target_directory, &entry.file_name())?;
+            copy_staged_media(
+                source_root,
+                &source_path,
+                target_root,
+                &target_path,
+                relocated_media,
+            )?;
         } else if file_type.is_file() {
-            fs::copy(&source_path, &target_path)
-                .map_err(|_| "workspace.writeFailed".to_string())?;
+            let target_path =
+                copy_file_without_overwrite(&source_path, target_directory, &entry.file_name())?;
+            relocated_media.insert(
+                source_path
+                    .strip_prefix(source_root)
+                    .map_err(|_| "workspace.writeFailed".to_string())?
+                    .to_path_buf(),
+                target_path
+                    .strip_prefix(target_root)
+                    .map_err(|_| "workspace.writeFailed".to_string())?
+                    .to_path_buf(),
+            );
         } else {
             return Err("workspace.writeFailed".to_string());
         }
     }
     Ok(())
+}
+
+fn create_or_select_destination_directory(
+    parent: &Path,
+    file_name: &OsStr,
+) -> Result<PathBuf, String> {
+    for collision_index in 0_u64.. {
+        let candidate = parent.join(collision_safe_name(file_name, collision_index));
+        match fs::create_dir(&candidate) {
+            Ok(()) => return Ok(candidate),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                if fs::symlink_metadata(&candidate)
+                    .map(|metadata| metadata.file_type().is_dir())
+                    .unwrap_or(false)
+                {
+                    return Ok(candidate);
+                }
+            }
+            Err(_) => return Err("workspace.createFailed".to_string()),
+        }
+    }
+    unreachable!("collision index exhausted")
+}
+
+fn copy_file_without_overwrite(
+    source_path: &Path,
+    target_directory: &Path,
+    file_name: &OsStr,
+) -> Result<PathBuf, String> {
+    for collision_index in 0_u64.. {
+        let target_path = target_directory.join(collision_safe_name(file_name, collision_index));
+        match install_staged_file(source_path, &target_path) {
+            Ok(true) => return Ok(target_path),
+            Ok(false) => continue,
+            Err(()) => return Err("workspace.writeFailed".to_string()),
+        }
+    }
+    unreachable!("collision index exhausted")
+}
+
+fn install_staged_file(source_path: &Path, target_path: &Path) -> Result<bool, ()> {
+    match fs::hard_link(source_path, target_path) {
+        Ok(()) => return Ok(true),
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => return Ok(false),
+        Err(_) => {}
+    }
+
+    let mut target_file = match OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(target_path)
+    {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => return Ok(false),
+        Err(_) => return Err(()),
+    };
+
+    let result = (|| {
+        let mut source_file = fs::File::open(source_path).map_err(|_| ())?;
+        io::copy(&mut source_file, &mut target_file).map_err(|_| ())?;
+        target_file.sync_all().map_err(|_| ())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(target_path);
+    }
+    result.map(|()| true)
+}
+
+fn collision_safe_name(file_name: &OsStr, collision_index: u64) -> OsString {
+    if collision_index == 0 {
+        return file_name.to_os_string();
+    }
+
+    let path = Path::new(file_name);
+    let mut candidate = path.file_stem().unwrap_or(file_name).to_os_string();
+    candidate.push(format!("-{}", collision_index));
+    if let Some(extension) = path.extension() {
+        candidate.push(".");
+        candidate.push(extension);
+    }
+    candidate
 }
 
 #[tauri::command]
@@ -240,16 +386,20 @@ where
         }
     };
 
+    let relocated_media = match merge_staged_media(&staging_path, &assets_path) {
+        Ok(relocated_media) => relocated_media,
+        Err(error) => {
+            let _ = fs::remove_dir_all(&staging_path);
+            return Err(error);
+        }
+    };
     let markdown = normalize_imported_media_paths(
         &String::from_utf8_lossy(&output),
         &workspace_path,
         &staging_path,
         &assets_path,
+        &relocated_media,
     );
-    if let Err(error) = merge_staged_media(&staging_path, &assets_path) {
-        let _ = fs::remove_dir_all(&staging_path);
-        return Err(error);
-    }
     if let Err(error) = write_imported_markdown(&markdown_path, &markdown) {
         return Err(error);
     }
@@ -273,8 +423,13 @@ mod tests {
         let assets_root = workspace_root.join("assets");
         let markdown = "![Chart](media/chart.png)\n[Attachment](media/data.csv)";
 
-        let normalized =
-            normalize_imported_media_paths(markdown, workspace_root, &assets_root, &assets_root);
+        let normalized = normalize_imported_media_paths(
+            markdown,
+            workspace_root,
+            &assets_root,
+            &assets_root,
+            &BTreeMap::new(),
+        );
 
         assert_eq!(
             normalized,
@@ -293,7 +448,13 @@ mod tests {
         let markdown = "![Chart](/tmp/workspace/assets/media/chart.png)";
 
         assert_eq!(
-            normalize_imported_media_paths(markdown, workspace_root, &assets_root, &assets_root),
+            normalize_imported_media_paths(
+                markdown,
+                workspace_root,
+                &assets_root,
+                &assets_root,
+                &BTreeMap::new(),
+            ),
             "![Chart](assets/media/chart.png)"
         );
     }
@@ -309,7 +470,13 @@ mod tests {
         );
 
         assert_eq!(
-            normalize_imported_media_paths(&markdown, workspace_root, &staging_root, &assets_root,),
+            normalize_imported_media_paths(
+                &markdown,
+                workspace_root,
+                &staging_root,
+                &assets_root,
+                &BTreeMap::new(),
+            ),
             "![Chart](assets/media/chart.png)"
         );
     }
@@ -321,7 +488,13 @@ mod tests {
         let markdown = "![Existing](assets/logo.png)\n![External](/tmp/other.png)";
 
         assert_eq!(
-            normalize_imported_media_paths(markdown, workspace_root, &assets_root, &assets_root),
+            normalize_imported_media_paths(
+                markdown,
+                workspace_root,
+                &assets_root,
+                &assets_root,
+                &BTreeMap::new(),
+            ),
             markdown
         );
     }
@@ -401,6 +574,82 @@ mod tests {
         let markdown = fs::read_to_string(&result.markdown_path).unwrap();
         assert_eq!(markdown, "![Chart](assets/media/chart.png)");
         assert!(workspace_root.join("assets/media/chart.png").exists());
+    }
+
+    #[test]
+    fn import_collision_preserves_existing_asset_and_rewrites_markdown_to_unique_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let workspace_root = directory.path();
+        let media_path = workspace_root.join("assets/media");
+        fs::create_dir_all(&media_path).unwrap();
+        fs::write(media_path.join("chart.png"), "existing chart").unwrap();
+        let mut staging_path = None;
+
+        let result = import_docx_to_workspace_with_runner(
+            "input.docx",
+            workspace_root.to_string_lossy().into_owned(),
+            |args| {
+                let staging_root = PathBuf::from(extract_media_root(args));
+                staging_path = Some(staging_root.clone());
+                fs::create_dir_all(staging_root.join("media")).unwrap();
+                fs::write(staging_root.join("media/chart.png"), "imported chart").unwrap();
+                Ok(b"![Chart](media/chart.png)".to_vec())
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            fs::read_to_string(media_path.join("chart.png")).unwrap(),
+            "existing chart"
+        );
+        assert_eq!(
+            fs::read_to_string(media_path.join("chart-1.png")).unwrap(),
+            "imported chart"
+        );
+        assert_eq!(
+            fs::read_to_string(result.markdown_path).unwrap(),
+            "![Chart](assets/media/chart-1.png)"
+        );
+        assert!(!staging_path.unwrap().exists());
+    }
+
+    #[test]
+    fn import_collision_retries_until_a_unique_asset_name_is_available() {
+        let directory = tempfile::tempdir().unwrap();
+        let workspace_root = directory.path();
+        let media_path = workspace_root.join("assets/media");
+        fs::create_dir_all(&media_path).unwrap();
+        fs::write(media_path.join("chart.png"), "original chart").unwrap();
+        fs::write(media_path.join("chart-1.png"), "previous import").unwrap();
+
+        let result = import_docx_to_workspace_with_runner(
+            "input.docx",
+            workspace_root.to_string_lossy().into_owned(),
+            |args| {
+                let staging_root = PathBuf::from(extract_media_root(args));
+                fs::create_dir_all(staging_root.join("media")).unwrap();
+                fs::write(staging_root.join("media/chart.png"), "latest import").unwrap();
+                Ok(b"![Chart](media/chart.png)".to_vec())
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            fs::read_to_string(media_path.join("chart.png")).unwrap(),
+            "original chart"
+        );
+        assert_eq!(
+            fs::read_to_string(media_path.join("chart-1.png")).unwrap(),
+            "previous import"
+        );
+        assert_eq!(
+            fs::read_to_string(media_path.join("chart-2.png")).unwrap(),
+            "latest import"
+        );
+        assert_eq!(
+            fs::read_to_string(result.markdown_path).unwrap(),
+            "![Chart](assets/media/chart-2.png)"
+        );
     }
 
     #[test]
