@@ -114,6 +114,12 @@ export default {
     save: {
       failed: '保存失败，但当前内容已保留在恢复草稿中',
     },
+    import: {
+      docxFailed: '导入 Word 文档失败',
+    },
+    export: {
+      docxFailed: '导出 Word 文档失败',
+    },
   },
   close: {
     title: '未保存的更改',

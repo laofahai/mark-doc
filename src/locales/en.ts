@@ -114,6 +114,12 @@ export default {
     save: {
       failed: 'Save failed, but current content is preserved in a recovery draft',
     },
+    import: {
+      docxFailed: 'Failed to import Word document',
+    },
+    export: {
+      docxFailed: 'Failed to export Word document',
+    },
   },
   close: {
     title: 'Unsaved Changes',
