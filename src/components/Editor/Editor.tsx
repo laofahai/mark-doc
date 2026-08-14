@@ -6,6 +6,8 @@ import { useTheme } from '@linch-tech/desktop-core'
 import { useTranslation } from 'react-i18next'
 import { toolbarIcons } from './toolbar-icons'
 import { EditorToolbarOverlay, type EditorToolbarActions } from './EditorToolbarOverlay'
+import { VditorEditorAdapter } from './VditorEditorAdapter'
+import type { DocumentEditorAdapter, EditorLocaleConfig } from './editor-adapter'
 
 const PRESET_COLORS = [
   '#FF0000', '#FF4500', '#FF8C00', '#FFD700', '#FFFF00',
@@ -18,15 +20,19 @@ const PRESET_COLORS = [
 interface EditorProps {
   content?: string
   onChange?: (markdown: string) => void
+  onAdapterReady?: (adapter: DocumentEditorAdapter) => void
+  locale?: EditorLocaleConfig
   zoom?: number
   actions?: EditorToolbarActions
 }
 
-const Editor = ({ content = '', onChange, zoom = 100, actions }: EditorProps) => {
+const Editor = ({ content = '', onChange, onAdapterReady, locale, zoom = 100, actions }: EditorProps) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const vditorRef = useRef<Vditor | null>(null)
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
+  const onAdapterReadyRef = useRef(onAdapterReady)
+  onAdapterReadyRef.current = onAdapterReady
   const contentRef = useRef(content)
   const savedRangeRef = useRef<Range | null>(null)
   const { theme } = useTheme()
@@ -203,7 +209,7 @@ const Editor = ({ content = '', onChange, zoom = 100, actions }: EditorProps) =>
       value: contentRef.current,
       mode: 'wysiwyg',
       theme: isDark ? 'dark' : 'classic',
-      lang: i18n.language === 'en' ? 'en_US' : 'zh_CN',
+      lang: locale?.editorLanguage ?? (i18n.language === 'en' ? 'en_US' : 'zh_CN'),
       height: '100%',
       placeholder: tr('editor.placeholder'),
       typewriterMode: false,
@@ -221,6 +227,7 @@ const Editor = ({ content = '', onChange, zoom = 100, actions }: EditorProps) =>
       input: (value) => { onChangeRef.current?.(value) },
       after: () => {
         vditorRef.current = vd
+        onAdapterReadyRef.current?.(new VditorEditorAdapter(vd))
         vd.focus()
         // Inject a mount point into the Vditor toolbar for our custom buttons
         const toolbarEl = containerRef.current?.querySelector('.vditor-toolbar')
@@ -241,7 +248,7 @@ const Editor = ({ content = '', onChange, zoom = 100, actions }: EditorProps) =>
         vditorRef.current = null
       }
     }
-  }, [theme, i18n.language])
+  }, [theme, i18n.language, locale?.editorLanguage])
 
   const handleMouseEnter = () => { vditorRef.current?.focus() }
 
