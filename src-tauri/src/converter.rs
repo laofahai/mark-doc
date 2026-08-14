@@ -2,50 +2,6 @@ use std::process::Command;
 use std::io::Read as IoRead;
 use tauri::Manager;
 
-/// 查找可执行文件的绝对路径，解决 macOS GUI 启动时 PATH 不完整问题
-fn find_bin(name: &str) -> String {
-    #[cfg(target_os = "macos")]
-    {
-        // macOS GUI 应用的 PATH 极其有限，直接检查常见安装路径
-        let candidates = [
-            format!("/opt/homebrew/bin/{}", name),   // Apple Silicon Homebrew
-            format!("/usr/local/bin/{}", name),       // Intel Homebrew
-            format!("/usr/bin/{}", name),             // 系统自带
-        ];
-        for path in &candidates {
-            if std::path::Path::new(path).exists() {
-                return path.clone();
-            }
-        }
-        // 再尝试通过 shell 展开完整 PATH 来查找
-        if let Ok(output) = Command::new("/bin/sh")
-            .arg("-l")
-            .arg("-c")
-            .arg(format!("which {}", name))
-            .output()
-        {
-            if output.status.success() {
-                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if !path.is_empty() {
-                    return path;
-                }
-            }
-        }
-    }
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        if let Ok(output) = Command::new("which").arg(name).output() {
-            if output.status.success() {
-                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if !path.is_empty() {
-                    return path;
-                }
-            }
-        }
-    }
-    name.to_string()
-}
-
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct ConversionResult {
     pub success: bool,
@@ -157,7 +113,7 @@ pub async fn pandoc_convert(
 ) -> Result<ConversionResult, String> {
     use std::io::Write;
 
-    let mut cmd = Command::new(find_bin("pandoc"));
+    let mut cmd = Command::new(crate::pandoc::binary::find_bin("pandoc"));
     cmd.arg("-f").arg(&from)
         .arg("-t").arg(&to)
         .arg("--wrap=none")
@@ -199,7 +155,7 @@ pub async fn pandoc_convert_file(
     output_path: String,
     extra_args: Option<Vec<String>>,
 ) -> Result<ConversionResult, String> {
-    let mut cmd = Command::new(find_bin("pandoc"));
+    let mut cmd = Command::new(crate::pandoc::binary::find_bin("pandoc"));
     cmd.arg(&input_path)
         .arg("-o")
         .arg(&output_path)
@@ -276,7 +232,7 @@ pub async fn pandoc_docx_to_markdown(
     // 创建临时目录提取图片
     let tmp_media = format!("/tmp/.markdoc-import-{}", std::process::id());
 
-    let output = Command::new(find_bin("pandoc"))
+    let output = Command::new(crate::pandoc::binary::find_bin("pandoc"))
         .arg(&input_path)
         .arg("-t").arg("markdown-simple_tables-multiline_tables-grid_tables+pipe_tables-link_attributes-raw_attribute")
         .arg("--extract-media").arg(&tmp_media)
@@ -586,7 +542,7 @@ fn embed_images_as_base64(md: &str, _base_dir: &str) -> String {
 pub async fn pandoc_docx_to_html(
     input_path: String,
 ) -> Result<ConversionResult, String> {
-    let output = Command::new(find_bin("pandoc"))
+    let output = Command::new(crate::pandoc::binary::find_bin("pandoc"))
         .arg(&input_path)
         .arg("-t").arg("html")
         .arg("--wrap=none")
@@ -613,22 +569,7 @@ pub async fn pandoc_docx_to_html(
 /// 检测 pandoc 是否可用，返回版本号
 #[tauri::command]
 pub fn check_pandoc_available() -> Result<Option<String>, String> {
-    match Command::new(find_bin("pandoc")).arg("--version").output() {
-        Ok(output) => {
-            if output.status.success() {
-                let version_str = String::from_utf8_lossy(&output.stdout);
-                // 第一行格式: "pandoc 3.6.4"
-                let version = version_str.lines().next()
-                    .unwrap_or("")
-                    .trim()
-                    .to_string();
-                Ok(Some(version))
-            } else {
-                Ok(None)
-            }
-        }
-        Err(_) => Ok(None),
-    }
+    Ok(crate::pandoc::health::pandoc_version())
 }
 
 /// 安装 pandoc（macOS 用 brew/pkg，Windows 用 winget）
@@ -637,9 +578,9 @@ pub async fn install_pandoc() -> Result<ConversionResult, String> {
     #[cfg(target_os = "macos")]
     {
         // 先尝试 brew
-        let brew_check = Command::new(find_bin("brew")).arg("--version").output();
+        let brew_check = Command::new(crate::pandoc::binary::find_bin("brew")).arg("--version").output();
         if brew_check.is_ok() && brew_check.unwrap().status.success() {
-            let output = Command::new(find_bin("brew"))
+            let output = Command::new(crate::pandoc::binary::find_bin("brew"))
                 .arg("install")
                 .arg("pandoc")
                 .stdout(std::process::Stdio::piped())
