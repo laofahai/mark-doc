@@ -3,7 +3,7 @@ use super::validator::is_safe_package_path;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use zip::write::SimpleFileOptions;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,7 +69,10 @@ pub fn write_mdoc_package(input: PackageWriteInput) -> Result<PackageWriteResult
                 .map_err(|_| "save.failed".to_string())?;
         }
 
-        zip.finish().map_err(|_| "save.failed".to_string())?;
+        zip.finish()
+            .map_err(|_| "save.failed".to_string())?
+            .sync_all()
+            .map_err(|_| "save.failed".to_string())?;
         Ok(())
     })();
 
@@ -94,18 +97,43 @@ fn replace_package(
     output_path: &PathBuf,
     recovery_path: &PathBuf,
 ) -> Result<(), String> {
+    let rollback_path = output_path.with_extension("mdoc.rollback");
+    replace_package_with_rename(
+        tmp_path,
+        output_path,
+        recovery_path,
+        &rollback_path,
+        |from, to| fs::rename(from, to),
+    )
+}
+
+// std::fs has no cross-platform atomic replacement for an existing destination.
+// Keep the original beside the destination until the replacement rename succeeds.
+fn replace_package_with_rename<F>(
+    tmp_path: &Path,
+    output_path: &Path,
+    recovery_path: &Path,
+    rollback_path: &Path,
+    mut rename: F,
+) -> Result<(), String>
+where
+    F: FnMut(&Path, &Path) -> std::io::Result<()>,
+{
     if !output_path.exists() {
-        return fs::rename(tmp_path, output_path).map_err(|_| "save.failed".to_string());
+        return rename(tmp_path, output_path).map_err(|_| "save.failed".to_string());
     }
 
     fs::copy(output_path, recovery_path).map_err(|_| "save.recoveryFailed".to_string())?;
-    fs::remove_file(output_path).map_err(|_| "save.failed".to_string())?;
+    if rollback_path.exists() {
+        fs::remove_file(rollback_path).map_err(|_| "save.recoveryFailed".to_string())?;
+    }
+    rename(output_path, rollback_path).map_err(|_| "save.failed".to_string())?;
 
-    if fs::rename(tmp_path, output_path).is_ok() {
-        return Ok(());
+    if rename(tmp_path, output_path).is_ok() {
+        return fs::remove_file(rollback_path).map_err(|_| "save.recoveryFailed".to_string());
     }
 
-    let restore_result = fs::copy(recovery_path, output_path);
+    let restore_result = rename(rollback_path, output_path);
     let _ = fs::remove_file(tmp_path);
     if restore_result.is_err() {
         return Err("save.recoveryFailed".to_string());
@@ -217,6 +245,31 @@ mod tests {
             .read_to_string(&mut document)
             .unwrap();
         assert_eq!(document, "# New");
+        assert!(!output.with_extension("mdoc.rollback").exists());
+    }
+
+    #[test]
+    fn restores_rollback_when_final_replacement_move_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("report.mdoc");
+        let tmp = output.with_extension("mdoc.tmp");
+        let recovery = output.with_extension("mdoc.bak");
+        let rollback = output.with_extension("mdoc.rollback");
+        fs::write(&output, "original package").unwrap();
+        fs::write(&tmp, "replacement package").unwrap();
+
+        let error = replace_package_with_rename(&tmp, &output, &recovery, &rollback, |from, to| {
+            if from == tmp && to == output {
+                return Err(std::io::Error::other("replacement failed"));
+            }
+            fs::rename(from, to)
+        })
+        .unwrap_err();
+
+        assert_eq!(error, "save.failed");
+        assert_eq!(fs::read(&output).unwrap(), b"original package");
+        assert_eq!(fs::read(&recovery).unwrap(), b"original package");
+        assert!(!rollback.exists());
     }
 
     #[test]
