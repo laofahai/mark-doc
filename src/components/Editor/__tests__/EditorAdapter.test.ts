@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { resolveEditorLanguage } from '../Editor'
 import { VditorEditorAdapter } from '../VditorEditorAdapter'
 
 describe('VditorEditorAdapter', () => {
@@ -67,5 +68,23 @@ describe('VditorEditorAdapter', () => {
     })
 
     expect(vditor.insertValue).toHaveBeenCalledWith('[assets/report.pdf](assets/report.pdf)')
+  })
+})
+
+describe('resolveEditorLanguage', () => {
+  it('keeps the locale override stable when the ui language changes', () => {
+    expect(resolveEditorLanguage({
+      uiLanguage: 'zh',
+      editorLanguage: 'en_US',
+    }, 'zh')).toBe('en_US')
+    expect(resolveEditorLanguage({
+      uiLanguage: 'en',
+      editorLanguage: 'en_US',
+    }, 'en')).toBe('en_US')
+  })
+
+  it('falls back to the current i18n language when no editor override is supplied', () => {
+    expect(resolveEditorLanguage(undefined, 'en')).toBe('en_US')
+    expect(resolveEditorLanguage(undefined, 'zh')).toBe('zh_CN')
   })
 })

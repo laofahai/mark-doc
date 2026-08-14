@@ -26,6 +26,10 @@ interface EditorProps {
   actions?: EditorToolbarActions
 }
 
+export function resolveEditorLanguage(locale: EditorLocaleConfig | undefined, i18nLanguage: string): EditorLocaleConfig['editorLanguage'] {
+  return locale?.editorLanguage ?? (i18nLanguage === 'en' ? 'en_US' : 'zh_CN')
+}
+
 const Editor = ({ content = '', onChange, onAdapterReady, locale, zoom = 100, actions }: EditorProps) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const vditorRef = useRef<Vditor | null>(null)
@@ -38,6 +42,7 @@ const Editor = ({ content = '', onChange, onAdapterReady, locale, zoom = 100, ac
   const { theme } = useTheme()
   const { t: tr, i18n } = useTranslation()
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null)
+  const editorLanguage = resolveEditorLanguage(locale, i18n.language)
 
   // Keep contentRef updated so theme switch preserves current edits
   useEffect(() => {
@@ -209,7 +214,7 @@ const Editor = ({ content = '', onChange, onAdapterReady, locale, zoom = 100, ac
       value: contentRef.current,
       mode: 'wysiwyg',
       theme: isDark ? 'dark' : 'classic',
-      lang: locale?.editorLanguage ?? (i18n.language === 'en' ? 'en_US' : 'zh_CN'),
+      lang: editorLanguage,
       height: '100%',
       placeholder: tr('editor.placeholder'),
       typewriterMode: false,
@@ -248,7 +253,7 @@ const Editor = ({ content = '', onChange, onAdapterReady, locale, zoom = 100, ac
         vditorRef.current = null
       }
     }
-  }, [theme, i18n.language, locale?.editorLanguage])
+  }, [theme, editorLanguage])
 
   const handleMouseEnter = () => { vditorRef.current?.focus() }
 
