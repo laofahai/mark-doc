@@ -2487,6 +2487,7 @@ dependencies = [
  "tauri-plugin-sql",
  "tauri-plugin-updater",
  "tempfile",
+ "windows-sys 0.61.2",
  "zip 2.4.2",
 ]
 
