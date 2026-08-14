@@ -8,3 +8,4 @@ src-tauri/target
 .vite
 src-tauri/.keys
 .worktrees/
+.superpowers/
