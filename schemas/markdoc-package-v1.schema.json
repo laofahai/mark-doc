@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/laofahai/mark-doc/main/schemas/markdoc-package-v1.schema.json",
+  "title": "MarkDoc Package Manifest v1",
+  "type": "object",
+  "required": ["format", "version", "entry", "schema", "spec"],
+  "additionalProperties": true,
+  "properties": {
+    "format": {
+      "const": "markdoc-package"
+    },
+    "version": {
+      "const": 1
+    },
+    "entry": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"
+    },
+    "schema": {
+      "type": "string",
+      "format": "uri",
+      "const": "https://raw.githubusercontent.com/laofahai/mark-doc/main/schemas/markdoc-package-v1.schema.json"
+    },
+    "spec": {
+      "type": "string",
+      "format": "uri",
+      "const": "https://github.com/laofahai/mark-doc/blob/main/docs/spec/markdoc-package-v1.md"
+    },
+    "createdBy": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "presentation": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "print": {
+          "type": "string"
+        },
+        "docxReference": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

@@ -56,6 +56,11 @@ pub fn write_mdoc_package(input: PackageWriteInput) -> Result<PackageWriteResult
         zip.write_all(&manifest_json)
             .map_err(|_| "save.failed".to_string())?;
 
+        zip.start_file("README.md", options)
+            .map_err(|_| "save.failed".to_string())?;
+        zip.write_all(package_readme_hint().as_bytes())
+            .map_err(|_| "save.failed".to_string())?;
+
         for package_path in &input.files {
             let absolute_path = workspace_root.join(package_path);
             let mut bytes = Vec::new();
@@ -122,6 +127,19 @@ where
     }
 
     Ok(())
+}
+
+fn package_readme_hint() -> &'static str {
+    r#"# MarkDoc Package
+
+This .mdoc file is an ordinary ZIP package.
+
+- manifest.json is the authoritative package contract.
+- manifest.entry names the canonical Markdown source, normally document.md.
+- Asset and presentation paths are relative to the package root.
+- Remote resources are not trusted by default.
+- Use manifest.schema for machine validation and manifest.spec for the format guide.
+"#
 }
 
 #[cfg(not(windows))]
@@ -194,18 +212,24 @@ mod tests {
             .unwrap()
             .read_to_string(&mut manifest)
             .unwrap();
+        let mut readme = String::new();
+        archive
+            .by_name("README.md")
+            .unwrap()
+            .read_to_string(&mut readme)
+            .unwrap();
         let mut document = String::new();
         archive
             .by_name("document.md")
             .unwrap()
             .read_to_string(&mut document)
             .unwrap();
-        assert_eq!(
-            serde_json::from_str::<MarkDocManifest>(&manifest)
-                .unwrap()
-                .entry,
-            "document.md"
-        );
+        let manifest = serde_json::from_str::<MarkDocManifest>(&manifest).unwrap();
+        assert_eq!(manifest.entry, "document.md");
+        assert!(manifest.schema.contains("markdoc-package-v1"));
+        assert!(manifest.spec.contains("markdoc-package-v1"));
+        assert!(readme.contains("manifest.json is the authoritative"));
+        assert!(readme.contains("manifest.entry names the canonical Markdown source"));
         assert_eq!(document, "# Hello");
     }
 

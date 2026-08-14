@@ -431,6 +431,12 @@ DocumentModel
 `.mdoc` save/load should be built as the package representation of
 `DocumentWorkspace`.
 
+Package identity and AI/tool discoverability live in `manifest.json`. A `.mdoc`
+writer should include stable `format`, `version`, `entry`, `schema`, and `spec`
+fields so external validators and AI tools can understand the package without
+MarkDoc installed. A packaged `README.md` may be generated as a human/AI hint,
+but it is explanatory only; readers must treat the manifest as the authority.
+
 The package writer must use atomic replacement and recovery metadata. The
 priority order is:
 
@@ -704,3 +710,8 @@ The final source quality bar:
 > If MarkDoc is uninstalled, the user still has a clean, open, understandable,
 > migratable document that humans, Git, search tools, and AI can continue to
 > use.
+
+For `.mdoc`, that means AI tools can unzip the file, read `manifest.json`, follow
+`schema` or `spec` for the format contract, then use `manifest.entry` as the
+canonical semantic source. The optional packaged README is a prompt-friendly
+guide, not a second source of truth.

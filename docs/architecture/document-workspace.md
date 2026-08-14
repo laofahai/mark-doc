@@ -87,11 +87,29 @@ extension alone:
 {
   "format": "markdoc-package",
   "version": 1,
-  "entry": "document.md"
+  "entry": "document.md",
+  "schema": "https://raw.githubusercontent.com/laofahai/mark-doc/main/schemas/markdoc-package-v1.schema.json",
+  "spec": "https://github.com/laofahai/mark-doc/blob/main/docs/spec/markdoc-package-v1.md"
 }
 ```
 
 The extension is a UX hint. The manifest is authoritative.
+
+AI and external tools should be able to identify the package without MarkDoc
+installed. The package therefore carries machine-readable discovery in
+`manifest.json`, not only prose documentation:
+
+- `format`: stable package identifier, currently `markdoc-package`
+- `version`: format version, currently `1`
+- `schema`: JSON Schema URL for validators and AI tools
+- `spec`: short human-readable package specification URL
+- optional packaged `README.md`: a hint for humans and AI explaining that the
+  file is a ZIP, `manifest.json` is authoritative, `manifest.entry` names the
+  canonical source, resource paths are relative, and remote resources are not
+  trusted by default
+
+`README.md` is never the protocol authority. Readers must validate
+`manifest.json`; writers should include the README only as a convenience hint.
 
 ## One Document, Many Files
 
@@ -109,7 +127,8 @@ presentation/print.css
 ```
 
 Those files are resources of the primary document. The canonical readable
-content remains `document.md`.
+content is the Markdown file named by `manifest.entry`; MarkDoc writes
+`document.md` by default.
 
 Multiple Markdown documents should be modeled as multiple workspaces or tabs.
 MarkDoc should not make multi-document packages the core model until there is a
@@ -472,6 +491,11 @@ Manifest:
   "format": "markdoc-package",
   "version": 1,
   "entry": "document.md",
+  "schema": "https://raw.githubusercontent.com/laofahai/mark-doc/main/schemas/markdoc-package-v1.schema.json",
+  "spec": "https://github.com/laofahai/mark-doc/blob/main/docs/spec/markdoc-package-v1.md",
+  "createdBy": {
+    "name": "MarkDoc"
+  },
   "presentation": {
     "print": "presentation/print.css",
     "docxReference": "presentation/reference.docx"
@@ -484,6 +508,20 @@ Package version is a format version, not the app version.
 `presentation/reference.docx` is optional but supported. When present, it must
 travel with the package so DOCX export can be consistent across machines.
 Profile identifiers remain stable and language-neutral.
+
+Core package paths are stable:
+
+- `manifest.json`: required and authoritative
+- `document.md`: default canonical Markdown entry written by MarkDoc
+- `README.md`: optional explanatory hint for humans and AI tools
+- `assets/`: default MarkDoc-managed asset directory
+- `presentation/`: default MarkDoc-managed presentation directory
+
+Readers must use `manifest.entry` as the source of truth, so packages from other
+tools may use another safe relative Markdown entry path. Importers should accept
+safe relative resource paths outside `assets/` for compatibility, but MarkDoc's
+own writer should normalize newly managed resources into the stable directories
+above.
 
 ## Security Rules
 
@@ -562,6 +600,16 @@ The architecture target is AI-ready document source quality.
 MarkDoc should make documents easy for AI tools to read, diff, rewrite, compare,
 and summarize by keeping Markdown clean and assets explicit. This refactor does
 not add AI Agent, RAG, cloud AI service, or autonomous editing behavior.
+
+The AI discoverability contract is deliberately small:
+
+- AI tools can unzip `.mdoc` and inspect `manifest.json`.
+- `manifest.schema` points to the machine contract.
+- `manifest.spec` and optional packaged `README.md` explain the reading order.
+- `manifest.entry` names the canonical semantic source for editing and
+  summarization, normally `document.md`.
+- Quarantined or remote resources require explicit trust and must not be loaded
+  merely because an AI or importer saw them in the package.
 
 It is acceptable to reserve a `DocumentCommand` boundary for later AI features,
 but AI features must not drive the document model now.

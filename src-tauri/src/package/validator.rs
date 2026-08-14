@@ -1,7 +1,7 @@
 use std::path::{Component, Path};
 
 pub fn is_safe_package_path(path: &str) -> bool {
-    if path.trim().is_empty() || path.contains('\\') {
+    if path.trim().is_empty() || path.contains('\\') || is_url_like(path) {
         return false;
     }
 
@@ -48,6 +48,7 @@ mod tests {
     fn rejects_traversal_absolute_and_drive_paths() {
         assert!(!is_safe_package_path("../secret.txt"));
         assert!(!is_safe_package_path("/tmp/secret.txt"));
+        assert!(!is_safe_package_path("C:secret.txt"));
         assert!(!is_safe_package_path("C:\\\\secret.txt"));
         assert!(!is_safe_package_path("assets/../../secret.txt"));
     }

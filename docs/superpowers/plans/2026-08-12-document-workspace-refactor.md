@@ -22,6 +22,8 @@
 - Vditor must be behind `DocumentEditorAdapter`; the document domain must not depend on Vditor APIs.
 - Existing Markdown with local resource references shows a non-blocking `.mdoc` suggestion and still allows in-place `.md` save.
 - Imported DOCX `Cmd+S` saves canonical `.mdoc` by default and must not overwrite the original DOCX.
+- `.mdoc` package identity and AI/tool discoverability are manifest-driven: `manifest.json` is authoritative and should expose stable `format`, `version`, `entry`, `schema`, and `spec` fields; any packaged README is only an explanatory hint.
+- `.mdoc` has stable writer-owned paths (`manifest.json`, default `document.md`, optional `README.md`, `assets/`, `presentation/`), while readers use `manifest.entry` and accept safe relative resource paths for compatibility.
 
 ---
 
@@ -2991,6 +2993,27 @@ describe('document architecture acceptance', () => {
     expect(containsBase64Images('![x](data:image/png;base64,AAAA)')).toBe(true)
     expect(containsBase64Images('![x](assets/x.png)')).toBe(false)
   })
+
+  it('keeps mdoc discoverability manifest-driven', () => {
+    const manifest = {
+      format: 'markdoc-package',
+      version: 1,
+      entry: 'document.md',
+      schema: 'https://raw.githubusercontent.com/laofahai/mark-doc/main/schemas/markdoc-package-v1.schema.json',
+      spec: 'https://github.com/laofahai/mark-doc/blob/main/docs/spec/markdoc-package-v1.md',
+    }
+    expect(manifest.format).toBe('markdoc-package')
+    expect(manifest.entry).toBe('document.md')
+    expect(manifest.schema).toContain('markdoc-package-v1')
+    expect(manifest.spec).toContain('markdoc-package-v1')
+  })
+
+  it('keeps core mdoc paths stable without hard-coding every resource path', () => {
+    const stableWriterPaths = ['manifest.json', 'document.md', 'README.md', 'assets/', 'presentation/']
+    expect(stableWriterPaths).toContain('manifest.json')
+    expect(stableWriterPaths).toContain('document.md')
+    expect(stableWriterPaths).toContain('assets/')
+  })
 })
 ```
 
@@ -3016,12 +3039,38 @@ Add a short feature bullet:
 
 Keep DOCX import/export and plain Markdown bullets. Do not remove setup instructions.
 
+Add a short `.mdoc` interoperability note:
+
+```md
+`.mdoc` files are ordinary ZIP packages. `manifest.json` is the authority for
+the format (`format`, `version`, `entry`, `schema`, and `spec`); `manifest.entry`
+names the canonical Markdown source. A packaged README may help humans and AI
+tools orient themselves, but importers must validate the manifest.
+```
+
 - [ ] **Step 4: Sync architecture docs**
 
 Update `docs/architecture/document-workspace.md` and `docs/architecture/refactor-design.md` only if implementation changed names or signatures. Keep the invariant text intact:
 
 ```text
 DOCX and PDF are delivery formats; Markdown remains the canonical semantic source whenever possible.
+```
+
+Also keep the AI/tool discoverability invariant intact:
+
+```text
+Manifest metadata is authoritative. Packaged README text is explanatory only.
+AI tools should discover `.mdoc` by unzipping the package, reading
+manifest.json, following schema/spec metadata, and treating manifest.entry as
+the canonical semantic source.
+```
+
+Also keep the package path invariant intact:
+
+```text
+MarkDoc writes stable core paths: manifest.json, document.md, README.md,
+assets/, and presentation/. Readers must still honor manifest.entry and accept
+safe relative resource paths outside assets/ for compatibility.
 ```
 
 - [ ] **Step 5: Run full verification**
@@ -3056,6 +3105,9 @@ git commit -m "test: add document architecture acceptance coverage"
 - [ ] DOCX primary save does not overwrite original DOCX.
 - [ ] Package reader identifies packages by manifest, not extension alone.
 - [ ] Package writer uses atomic replacement and recovery state.
+- [ ] Package manifest exposes schema/spec discoverability metadata for AI/tools.
+- [ ] Optional packaged README is a hint only, never the source of truth.
+- [ ] MarkDoc writer uses stable core paths; reader uses manifest.entry as authority.
 - [ ] Remote resources are denied by default.
 - [ ] Corrupted packages quarantine CSS/SVG/reference.docx/remote resources.
 - [ ] Vditor is behind `DocumentEditorAdapter`.
