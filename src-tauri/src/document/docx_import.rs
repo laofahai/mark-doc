@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -8,6 +7,7 @@ use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static NEXT_IMPORT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
+static NEXT_IMPORT_STAGING_ID: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DocxImportResult {
@@ -19,6 +19,7 @@ pub struct DocxImportResult {
 fn normalize_imported_media_paths(
     markdown: &str,
     workspace_root: &Path,
+    media_root: &Path,
     assets_root: &Path,
 ) -> String {
     let link_pattern = regex::Regex::new(
@@ -32,78 +33,22 @@ fn normalize_imported_media_paths(
             format!(
                 "{}{}{}",
                 &captures["prefix"],
-                normalize_imported_media_destination(destination, workspace_root, assets_root),
+                normalize_imported_media_destination(
+                    destination,
+                    workspace_root,
+                    media_root,
+                    assets_root,
+                ),
                 &captures["suffix"]
             )
         })
         .into_owned()
 }
 
-fn cleanup_failed_import_with_snapshot(
-    assets_path: &Path,
-    assets_created: bool,
-    existing_asset_entries: &BTreeSet<PathBuf>,
-) {
-    if assets_created {
-        let _ = fs::remove_dir_all(assets_path);
-        return;
-    }
-
-    let Ok(current_asset_entries) = snapshot_asset_entries(assets_path) else {
-        return;
-    };
-    let mut new_entries: Vec<PathBuf> = current_asset_entries
-        .difference(existing_asset_entries)
-        .cloned()
-        .collect();
-    new_entries.sort_by_key(|path| std::cmp::Reverse(path.components().count()));
-
-    for entry in new_entries {
-        let path = assets_path.join(entry);
-        match fs::symlink_metadata(&path) {
-            Ok(metadata) if metadata.file_type().is_dir() => {
-                let _ = fs::remove_dir(&path);
-            }
-            Ok(_) => {
-                let _ = fs::remove_file(&path);
-            }
-            Err(_) => {}
-        }
-    }
-}
-
-fn snapshot_asset_entries(assets_path: &Path) -> Result<BTreeSet<PathBuf>, String> {
-    let mut entries = BTreeSet::new();
-    collect_asset_entries(assets_path, assets_path, &mut entries)?;
-    Ok(entries)
-}
-
-fn collect_asset_entries(
-    assets_path: &Path,
-    directory: &Path,
-    entries: &mut BTreeSet<PathBuf>,
-) -> Result<(), String> {
-    for entry in fs::read_dir(directory).map_err(|_| "workspace.createFailed".to_string())? {
-        let entry = entry.map_err(|_| "workspace.createFailed".to_string())?;
-        let path = entry.path();
-        let relative_path = path
-            .strip_prefix(assets_path)
-            .map_err(|_| "workspace.createFailed".to_string())?
-            .to_path_buf();
-        let file_type = entry
-            .file_type()
-            .map_err(|_| "workspace.createFailed".to_string())?;
-        entries.insert(relative_path);
-        if file_type.is_dir() {
-            collect_asset_entries(assets_path, &path, entries)?;
-        }
-    }
-    Ok(())
-}
-
 fn normalize_imported_media_destination(
     destination: &str,
     workspace_root: &Path,
+    media_root: &Path,
     assets_root: &Path,
 ) -> String {
     let (path, wrapped) = destination
@@ -124,10 +69,17 @@ fn normalize_imported_media_destination(
 
         if source_path.is_absolute() {
             source_path
-                .strip_prefix(assets_root)
+                .strip_prefix(media_root)
                 .ok()
                 .map(|relative| workspace_assets_path.join(relative))
                 .and_then(|relative| markdown_path_string(&relative))
+                .or_else(|| {
+                    source_path
+                        .strip_prefix(assets_root)
+                        .ok()
+                        .map(|relative| workspace_assets_path.join(relative))
+                        .and_then(|relative| markdown_path_string(&relative))
+                })
                 .unwrap_or_else(|| path.to_string())
         } else if source_path.starts_with(workspace_assets_path) {
             path.to_string()
@@ -200,6 +152,52 @@ fn create_unique_temporary_markdown(workspace_path: &Path) -> Result<(PathBuf, f
     Err("workspace.writeFailed".to_string())
 }
 
+fn create_unique_import_staging_directory(workspace_path: &Path) -> Result<PathBuf, String> {
+    for _ in 0..128 {
+        let attempt_id = NEXT_IMPORT_STAGING_ID.fetch_add(1, Ordering::Relaxed);
+        let staging_path = workspace_path.join(format!(
+            ".markdoc-docx-import-media-{}-{}",
+            std::process::id(),
+            attempt_id
+        ));
+        match fs::create_dir(&staging_path) {
+            Ok(()) => return Ok(staging_path),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => return Err("workspace.createFailed".to_string()),
+        }
+    }
+
+    Err("workspace.createFailed".to_string())
+}
+
+fn merge_staged_media(staging_path: &Path, assets_path: &Path) -> Result<(), String> {
+    fs::create_dir_all(assets_path).map_err(|_| "workspace.createFailed".to_string())?;
+    copy_staged_media(staging_path, assets_path)?;
+    fs::remove_dir_all(staging_path).map_err(|_| "workspace.writeFailed".to_string())
+}
+
+fn copy_staged_media(source_directory: &Path, target_directory: &Path) -> Result<(), String> {
+    for entry in fs::read_dir(source_directory).map_err(|_| "workspace.writeFailed".to_string())? {
+        let entry = entry.map_err(|_| "workspace.writeFailed".to_string())?;
+        let source_path = entry.path();
+        let target_path = target_directory.join(entry.file_name());
+        let file_type = entry
+            .file_type()
+            .map_err(|_| "workspace.writeFailed".to_string())?;
+
+        if file_type.is_dir() {
+            fs::create_dir_all(&target_path).map_err(|_| "workspace.createFailed".to_string())?;
+            copy_staged_media(&source_path, &target_path)?;
+        } else if file_type.is_file() {
+            fs::copy(&source_path, &target_path)
+                .map_err(|_| "workspace.writeFailed".to_string())?;
+        } else {
+            return Err("workspace.writeFailed".to_string());
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn import_docx_to_workspace(
     input_path: String,
@@ -228,29 +226,16 @@ where
 {
     let workspace_path = PathBuf::from(&workspace_root);
     let assets_path = workspace_path.join("assets");
-    let assets_created = !assets_path.exists();
-    fs::create_dir_all(&assets_path).map_err(|_| "workspace.createFailed".to_string())?;
-    let existing_asset_entries = match snapshot_asset_entries(&assets_path) {
-        Ok(entries) => entries,
-        Err(error) => {
-            if assets_created {
-                let _ = fs::remove_dir_all(&assets_path);
-            }
-            return Err(error);
-        }
-    };
+    fs::create_dir_all(&workspace_path).map_err(|_| "workspace.createFailed".to_string())?;
+    let staging_path = create_unique_import_staging_directory(&workspace_path)?;
 
-    let assets_path_string = assets_path.to_string_lossy().into_owned();
-    let args = crate::pandoc::args::docx_import_args(input_path, &assets_path_string);
+    let staging_path_string = staging_path.to_string_lossy().into_owned();
+    let args = crate::pandoc::args::docx_import_args(input_path, &staging_path_string);
     let markdown_path = workspace_path.join("document.md");
     let output = match runner(&args) {
         Ok(output) => output,
         Err(()) => {
-            cleanup_failed_import_with_snapshot(
-                &assets_path,
-                assets_created,
-                &existing_asset_entries,
-            );
+            let _ = fs::remove_dir_all(&staging_path);
             return Err("import.docxFailed".to_string());
         }
     };
@@ -258,17 +243,21 @@ where
     let markdown = normalize_imported_media_paths(
         &String::from_utf8_lossy(&output),
         &workspace_path,
+        &staging_path,
         &assets_path,
     );
+    if let Err(error) = merge_staged_media(&staging_path, &assets_path) {
+        let _ = fs::remove_dir_all(&staging_path);
+        return Err(error);
+    }
     if let Err(error) = write_imported_markdown(&markdown_path, &markdown) {
-        cleanup_failed_import_with_snapshot(&assets_path, assets_created, &existing_asset_entries);
         return Err(error);
     }
 
     Ok(DocxImportResult {
         workspace_root,
         markdown_path: markdown_path.to_string_lossy().into_owned(),
-        assets_path: assets_path_string,
+        assets_path: assets_path.to_string_lossy().into_owned(),
     })
 }
 
@@ -284,7 +273,8 @@ mod tests {
         let assets_root = workspace_root.join("assets");
         let markdown = "![Chart](media/chart.png)\n[Attachment](media/data.csv)";
 
-        let normalized = normalize_imported_media_paths(markdown, workspace_root, &assets_root);
+        let normalized =
+            normalize_imported_media_paths(markdown, workspace_root, &assets_root, &assets_root);
 
         assert_eq!(
             normalized,
@@ -303,7 +293,23 @@ mod tests {
         let markdown = "![Chart](/tmp/workspace/assets/media/chart.png)";
 
         assert_eq!(
-            normalize_imported_media_paths(markdown, workspace_root, &assets_root),
+            normalize_imported_media_paths(markdown, workspace_root, &assets_root, &assets_root),
+            "![Chart](assets/media/chart.png)"
+        );
+    }
+
+    #[test]
+    fn normalizes_absolute_paths_inside_the_staging_media_directory() {
+        let workspace_root = Path::new("/tmp/workspace");
+        let staging_root = workspace_root.join(".markdoc-docx-import-media-1-1");
+        let assets_root = workspace_root.join("assets");
+        let markdown = format!(
+            "![Chart]({})",
+            staging_root.join("media/chart.png").display()
+        );
+
+        assert_eq!(
+            normalize_imported_media_paths(&markdown, workspace_root, &staging_root, &assets_root,),
             "![Chart](assets/media/chart.png)"
         );
     }
@@ -315,7 +321,7 @@ mod tests {
         let markdown = "![Existing](assets/logo.png)\n![External](/tmp/other.png)";
 
         assert_eq!(
-            normalize_imported_media_paths(markdown, workspace_root, &assets_root),
+            normalize_imported_media_paths(markdown, workspace_root, &assets_root, &assets_root),
             markdown
         );
     }
@@ -331,9 +337,10 @@ mod tests {
         let result = import_docx_to_workspace_with_runner(
             "input.docx",
             workspace_root.to_string_lossy().into_owned(),
-            |_| {
-                fs::create_dir_all(assets_path.join("media")).unwrap();
-                fs::write(assets_path.join("media/chart.png"), "partial media").unwrap();
+            |args| {
+                let staging_root = PathBuf::from(extract_media_root(args));
+                fs::create_dir_all(staging_root.join("media")).unwrap();
+                fs::write(staging_root.join("media/chart.png"), "partial media").unwrap();
                 Err(())
             },
         );
@@ -357,9 +364,10 @@ mod tests {
         let result = import_docx_to_workspace_with_runner(
             "input.docx",
             workspace_root.to_string_lossy().into_owned(),
-            |_| {
-                fs::create_dir_all(assets_path.join("media")).unwrap();
-                fs::write(assets_path.join("media/chart.png"), "partial media").unwrap();
+            |args| {
+                let staging_root = PathBuf::from(extract_media_root(args));
+                fs::create_dir_all(staging_root.join("media")).unwrap();
+                fs::write(staging_root.join("media/chart.png"), "partial media").unwrap();
                 Err(())
             },
         );
@@ -377,14 +385,14 @@ mod tests {
     fn import_pipeline_writes_resolvable_workspace_media_links_from_runner_output() {
         let directory = tempfile::tempdir().unwrap();
         let workspace_root = directory.path();
-        let assets_path = workspace_root.join("assets");
 
         let result = import_docx_to_workspace_with_runner(
             "input.docx",
             workspace_root.to_string_lossy().into_owned(),
-            |_| {
-                fs::create_dir_all(assets_path.join("media")).unwrap();
-                fs::write(assets_path.join("media/chart.png"), "chart data").unwrap();
+            |args| {
+                let staging_root = PathBuf::from(extract_media_root(args));
+                fs::create_dir_all(staging_root.join("media")).unwrap();
+                fs::write(staging_root.join("media/chart.png"), "chart data").unwrap();
                 Ok(b"![Chart](media/chart.png)".to_vec())
             },
         )
@@ -407,5 +415,51 @@ mod tests {
         drop(second_file);
         fs::remove_file(first_path).unwrap();
         fs::remove_file(second_path).unwrap();
+    }
+
+    #[test]
+    fn staging_media_directories_are_unique_per_import_attempt() {
+        let directory = tempfile::tempdir().unwrap();
+        let first_path = create_unique_import_staging_directory(directory.path()).unwrap();
+        let second_path = create_unique_import_staging_directory(directory.path()).unwrap();
+
+        assert_ne!(first_path, second_path);
+        fs::remove_dir_all(first_path).unwrap();
+        fs::remove_dir_all(second_path).unwrap();
+    }
+
+    #[test]
+    fn failed_attempt_does_not_delete_final_media_created_by_an_overlapping_import() {
+        let directory = tempfile::tempdir().unwrap();
+        let workspace_root = directory.path();
+        let final_media = workspace_root.join("assets/media/successful-import.png");
+        let mut failed_attempt_staging_path = None;
+
+        let result = import_docx_to_workspace_with_runner(
+            "input.docx",
+            workspace_root.to_string_lossy().into_owned(),
+            |args| {
+                let staging_root = PathBuf::from(extract_media_root(args));
+                failed_attempt_staging_path = Some(staging_root.clone());
+                fs::create_dir_all(staging_root.join("media")).unwrap();
+                fs::write(staging_root.join("media/failed-import.png"), "failed media").unwrap();
+
+                fs::create_dir_all(final_media.parent().unwrap()).unwrap();
+                fs::write(&final_media, "successful media").unwrap();
+                Err(())
+            },
+        );
+
+        assert_eq!(result.unwrap_err(), "import.docxFailed");
+        assert_eq!(fs::read_to_string(final_media).unwrap(), "successful media");
+        assert!(!failed_attempt_staging_path.unwrap().exists());
+    }
+
+    fn extract_media_root(args: &[String]) -> &str {
+        let extract_media_index = args
+            .iter()
+            .position(|arg| arg == "--extract-media")
+            .unwrap();
+        &args[extract_media_index + 1]
     }
 }
