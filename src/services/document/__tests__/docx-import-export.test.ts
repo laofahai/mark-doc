@@ -10,9 +10,9 @@ describe('DOCX importer/exporter', () => {
 
   it('uses the workspace paths returned by the docx import command', async () => {
     vi.mocked(invoke).mockResolvedValueOnce({
-      workspaceRoot: '/tmp/markdoc/doc-1',
-      markdownPath: '/tmp/markdoc/doc-1/converted/content.md',
-      assetsPath: '/tmp/markdoc/doc-1/media/extracted',
+      workspace_root: '/tmp/markdoc/doc-1',
+      markdown_path: '/tmp/markdoc/doc-1/converted/content.md',
+      assets_path: '/tmp/markdoc/doc-1/media/extracted',
     })
     const importer = new DocxImporter()
     const result = await importer.import('/docs/report.docx', '/tmp/markdoc/doc-1')
@@ -42,7 +42,7 @@ describe('DOCX importer/exporter', () => {
   })
 
   it('exports document workspace through docx command', async () => {
-    vi.mocked(invoke).mockResolvedValueOnce({ outputPath: '/docs/report.docx' })
+    vi.mocked(invoke).mockResolvedValueOnce({ output_path: '/docs/report.docx' })
     const exporter = new DocxExporter()
     const result = await exporter.export({
       markdownPath: '/tmp/doc/document.md',
@@ -50,6 +50,9 @@ describe('DOCX importer/exporter', () => {
       referenceDocx: '/tmp/doc/presentation/reference.docx',
     })
     expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.value.outputPath).toBe('/docs/report.docx')
+    }
     expect(invoke).toHaveBeenCalledWith('export_workspace_to_docx', {
       input: {
         markdownPath: '/tmp/doc/document.md',

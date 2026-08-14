@@ -11,16 +11,16 @@ function nextDocumentId() {
 }
 
 interface DocxImportCommandResult {
-  workspaceRoot: string
-  markdownPath: string
-  assetsPath: string
+  workspace_root: string
+  markdown_path: string
+  assets_path: string
 }
 
 function createImportedWorkspace(result: DocxImportCommandResult) {
   return {
-    ...createTemporaryWorkspace(result.workspaceRoot, 'docx-import'),
-    entryPath: result.markdownPath,
-    assetsPath: result.assetsPath,
+    ...createTemporaryWorkspace(result.workspace_root, 'docx-import'),
+    entryPath: result.markdown_path,
+    assetsPath: result.assets_path,
   }
 }
 
@@ -34,7 +34,7 @@ export class DocxImporter {
       const workspace = createImportedWorkspace(result)
       return ok({
         id: nextDocumentId(),
-        source: { type: 'docx', originalPath: inputPath, workspacePath: result.workspaceRoot },
+        source: { type: 'docx', originalPath: inputPath, workspacePath: result.workspace_root },
         workspace,
         markdown: '',
         metadata: {},

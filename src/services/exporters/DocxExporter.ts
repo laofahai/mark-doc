@@ -7,17 +7,21 @@ export interface DocxExportInput {
   referenceDocx?: string
 }
 
+interface DocxExportCommandResult {
+  output_path: string
+}
+
 export class DocxExporter {
   async export(input: DocxExportInput): Promise<Result<{ outputPath: string }>> {
     try {
-      const result = await invoke<{ outputPath: string }>('export_workspace_to_docx', {
+      const result = await invoke<DocxExportCommandResult>('export_workspace_to_docx', {
         input: {
           markdownPath: input.markdownPath,
           outputPath: input.outputPath,
           referenceDocx: input.referenceDocx,
         },
       })
-      return ok(result)
+      return ok({ outputPath: result.output_path })
     } catch (cause) {
       return err('export.docxFailed', { messageKey: 'errors.export.docxFailed', cause })
     }
