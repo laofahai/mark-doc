@@ -38,4 +38,15 @@ describe('package import/export wrappers', () => {
       },
     })
   })
+
+  it('returns the openFailed message key when package inspection fails', async () => {
+    vi.mocked(invoke).mockRejectedValueOnce(new Error('read failed'))
+    const importer = new PackageImporter()
+    const result = await importer.inspect('/docs/report.mdoc')
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.code).toBe('package.openFailed')
+      expect(result.error.messageKey).toBe('errors.package.openFailed')
+    }
+  })
 })

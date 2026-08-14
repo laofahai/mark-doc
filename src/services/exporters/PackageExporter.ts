@@ -2,12 +2,12 @@ import { invoke } from '@tauri-apps/api/core'
 import { err, ok, type Result } from '../document/errors'
 import type { DocumentWorkspace } from '../document/model'
 
-interface PackageExportOptions {
+export interface PackageExportOptions {
   outputPath: string
   files: string[]
 }
 
-interface PackageExportResult {
+export interface PackageExportResult {
   outputPath: string
   recoveryPath?: string | null
 }

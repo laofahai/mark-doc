@@ -108,6 +108,7 @@ export default {
     },
     package: {
       invalidManifest: 'Invalid MarkDoc document manifest: {{path}}',
+      openFailed: 'Failed to open MarkDoc document package: {{path}}',
       unsafePath: 'Document package contains an unsafe path: {{path}}',
     },
     save: {

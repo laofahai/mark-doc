@@ -7,7 +7,7 @@ export interface PackageManifest {
   entry: string
 }
 
-interface PackageInspectResult {
+export interface PackageInspectResult {
   manifest: PackageManifest
   entries: string[]
   quarantined: string[]
@@ -22,7 +22,7 @@ export class PackageImporter {
       }
       return ok(result)
     } catch (cause) {
-      return err('package.openFailed', { messageKey: 'errors.package.invalidManifest', params: { path }, cause })
+      return err('package.openFailed', { messageKey: 'errors.package.openFailed', params: { path }, cause })
     }
   }
 }

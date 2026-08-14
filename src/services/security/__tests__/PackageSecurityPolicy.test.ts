@@ -18,4 +18,20 @@ describe('PackageSecurityPolicy', () => {
     expect(policy.canLoadRemote('https://images.example.com/a.png', 'image')).toBe(true)
     expect(policy.canLoadRemote('https://other.example.com/a.png', 'image')).toBe(false)
   })
+
+  it('denies non-http remote schemes even for trusted documents', () => {
+    const policy = PackageSecurityPolicy.default().trustDocument()
+    expect(policy.canLoadRemote('javascript:alert(1)', 'script')).toBe(false)
+    expect(policy.canLoadRemote('data:text/plain,hello', 'other')).toBe(false)
+    expect(policy.canLoadRemote('file:///tmp/image.png', 'image')).toBe(false)
+    expect(policy.canLoadRemote('https://example.com/image.png', 'image')).toBe(true)
+  })
+
+  it('allows only normalized exact URL exceptions', () => {
+    const policy = PackageSecurityPolicy.default().allowUrl('HTTPS://EXAMPLE.COM:443/image.png#preview')
+    expect(policy.canLoadRemote('https://example.com/image.png#preview', 'image')).toBe(true)
+    expect(policy.canLoadRemote('https://example.com/image.png', 'image')).toBe(false)
+    expect(policy.canLoadRemote('https://example.com/image.png?size=large', 'image')).toBe(false)
+    expect(policy.canLoadRemote('data:text/plain,hello', 'other')).toBe(false)
+  })
 })

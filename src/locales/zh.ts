@@ -108,6 +108,7 @@ export default {
     },
     package: {
       invalidManifest: 'MarkDoc 文档清单无效：{{path}}',
+      openFailed: '打开 MarkDoc 文档包失败：{{path}}',
       unsafePath: '文档包包含不安全路径：{{path}}',
     },
     save: {
