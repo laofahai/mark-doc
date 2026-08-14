@@ -16,6 +16,14 @@ interface DocxImportCommandResult {
   assetsPath: string
 }
 
+function createImportedWorkspace(result: DocxImportCommandResult) {
+  return {
+    ...createTemporaryWorkspace(result.workspaceRoot, 'docx-import'),
+    entryPath: result.markdownPath,
+    assetsPath: result.assetsPath,
+  }
+}
+
 export class DocxImporter {
   async import(inputPath: string, workspaceRoot: string): Promise<Result<DocumentModel>> {
     try {
@@ -23,7 +31,7 @@ export class DocxImporter {
         inputPath,
         workspaceRoot,
       })
-      const workspace = createTemporaryWorkspace(result.workspaceRoot, 'docx-import')
+      const workspace = createImportedWorkspace(result)
       return ok({
         id: nextDocumentId(),
         source: { type: 'docx', originalPath: inputPath, workspacePath: result.workspaceRoot },
