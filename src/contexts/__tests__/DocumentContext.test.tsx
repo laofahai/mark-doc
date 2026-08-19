@@ -16,6 +16,17 @@ describe('DocumentContext', () => {
     expect(result.current.activeSaveDecision?.defaultKind).toBe('mdoc')
   })
 
+  it('exposes document-owned open, save, and DOCX export actions', () => {
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <DocumentProvider>{children}</DocumentProvider>
+    )
+    const { result } = renderHook(() => useDocument(), { wrapper })
+
+    expect(result.current.openFileFromPath).toEqual(expect.any(Function))
+    expect(result.current.saveActiveDocument).toEqual(expect.any(Function))
+    expect(result.current.exportActiveDocx).toEqual(expect.any(Function))
+  })
+
   it('marks active document markdown dirty and can clear the active document', () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <DocumentProvider>{children}</DocumentProvider>

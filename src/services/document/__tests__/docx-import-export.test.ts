@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { invoke } from '@tauri-apps/api/core'
+import { readTextFile } from '@tauri-apps/plugin-fs'
 import { DocxImporter } from '../../importers/DocxImporter'
 import { DocxExporter } from '../../exporters/DocxExporter'
 
@@ -30,6 +31,19 @@ describe('DOCX importer/exporter', () => {
       expect(result.value.workspace.entryPath).toBe('/tmp/markdoc/doc-1/converted/content.md')
       expect(result.value.workspace.assetsPath).toBe('/tmp/markdoc/doc-1/media/extracted')
     }
+  })
+
+  it('loads markdown from the extracted DOCX workspace entry', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce({
+      workspace_root: '/tmp/markdoc/doc-2',
+      markdown_path: '/tmp/markdoc/doc-2/document.md',
+      assets_path: '/tmp/markdoc/doc-2/assets',
+    })
+    vi.mocked(readTextFile).mockResolvedValueOnce('# Imported DOCX')
+
+    const result = await new DocxImporter().import('/docs/report.docx', '/tmp/markdoc/doc-2')
+
+    expect(result).toMatchObject({ ok: true, value: { markdown: '# Imported DOCX' } })
   })
 
   it('returns the docx import error contract when the command rejects', async () => {

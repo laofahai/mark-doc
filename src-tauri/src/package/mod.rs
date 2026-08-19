@@ -4,6 +4,6 @@ pub mod validator;
 pub mod writer;
 
 #[allow(unused_imports)]
-pub use reader::{read_mdoc_package, PackageReadResult};
+pub use reader::{extract_mdoc_package, read_mdoc_package, PackageExtractResult, PackageReadResult};
 #[allow(unused_imports)]
 pub use writer::{write_mdoc_package, PackageWriteInput, PackageWriteResult};

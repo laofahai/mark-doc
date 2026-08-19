@@ -51,6 +51,7 @@ pub fn run() {
             document::docx_import::import_docx_to_workspace,
             document::docx_export::export_workspace_to_docx,
             package::reader::read_mdoc_package,
+            package::reader::extract_mdoc_package,
             package::writer::write_mdoc_package,
             take_pending_files,
         ])

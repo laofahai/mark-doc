@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import type { DocumentModel } from '../services/document/model'
 import { resolveSaveTarget, type SaveTargetDecision } from '../services/document/save-strategy'
+import { DocumentService } from '../services/document/document-service'
 
 export interface DocumentTab {
   id: string
@@ -24,6 +25,9 @@ interface DocumentContextValue {
   getDocumentForTab: (id: string) => DocumentModel | null
   markDocumentTabSavedAsMarkdown: (id: string, path: string) => void
   markActiveDocumentSavedAsMarkdown: (path: string) => void
+  openFileFromPath: (path: string, name: string) => Promise<void>
+  saveActiveDocument: () => Promise<void>
+  exportActiveDocx: (outputPath: string, referenceDocx?: string) => Promise<void>
 }
 
 const DocumentContext = createContext<DocumentContextValue | null>(null)
@@ -38,6 +42,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   const [documents, setDocuments] = useState<DocumentModel[]>([])
   const [tabs, setTabs] = useState<StoredDocumentTab[]>([])
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
+  const documentService = useMemo(() => new DocumentService(), [])
 
   const activeTab = tabs.find(tab => tab.id === activeTabId) || null
   const activeDocument = documents.find(document => document.id === activeTab?.documentId) || null
@@ -132,6 +137,35 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     markDocumentTabSavedAsMarkdown(activeTabId, path)
   }, [activeTabId, markDocumentTabSavedAsMarkdown])
 
+  const openFileFromPath = useCallback(async (path: string, name: string) => {
+    const existing = documents.find(document => (document.source.type === 'markdown' && document.source.path === path) || (document.source.type === 'package' && document.source.packagePath === path) || (document.source.type === 'docx' && document.source.originalPath === path))
+    if (existing) {
+      const tab = tabs.find(candidate => candidate.documentId === existing.id)
+      if (tab) setActiveTabId(tab.id)
+      return
+    }
+    const opened = await documentService.openPath(path)
+    if (!opened.ok) throw new Error(opened.error.code)
+    const tab = { id: `tab-${opened.value.id}`, documentId: opened.value.id, name }
+    setDocuments(previous => [...previous, opened.value])
+    setTabs(previous => [...previous, tab])
+    setActiveTabId(tab.id)
+  }, [documentService, documents, tabs])
+
+  const saveActiveDocument = useCallback(async () => {
+    if (!activeDocument) return
+    const saved = await documentService.saveDocument(activeDocument)
+    if (!saved.ok) throw new Error(saved.error.code)
+    if (!saved.value) return
+    setDocuments(previous => previous.map(document => document.id === activeDocument.id ? saved.value! : document))
+  }, [activeDocument, documentService])
+
+  const exportActiveDocx = useCallback(async (outputPath: string, referenceDocx?: string) => {
+    if (!activeDocument) return
+    const exported = await documentService.exportDocx(activeDocument, outputPath, referenceDocx)
+    if (!exported.ok) throw new Error(exported.error.code)
+  }, [activeDocument, documentService])
+
   const value = useMemo(() => ({
     tabs: documentTabs,
     activeTabId,
@@ -145,6 +179,9 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     getDocumentForTab,
     markDocumentTabSavedAsMarkdown,
     markActiveDocumentSavedAsMarkdown,
+    openFileFromPath,
+    saveActiveDocument,
+    exportActiveDocx,
   }), [
     documentTabs,
     activeTabId,
@@ -158,6 +195,9 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     getDocumentForTab,
     markDocumentTabSavedAsMarkdown,
     markActiveDocumentSavedAsMarkdown,
+    openFileFromPath,
+    saveActiveDocument,
+    exportActiveDocx,
   ])
 
   return <DocumentContext.Provider value={value}>{children}</DocumentContext.Provider>

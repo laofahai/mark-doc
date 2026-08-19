@@ -4,6 +4,7 @@ import type { EditorToolbarActions } from '../components/Editor/EditorToolbarOve
 import { CloseConfirmDialog } from '../components/CloseConfirmDialog'
 import { ExportDocxDialog, type TemplateChoice } from '../components/ExportDocxDialog'
 import { saveAsMarkdown, saveFile, convertMdToDocx } from '../services/file'
+import { open } from '@tauri-apps/plugin-dialog'
 import { useFile, type FileTab } from '../contexts/FileContext'
 import { useDocument } from '../contexts/DocumentContext'
 import type { DocumentTab } from '../contexts/DocumentContext'
@@ -108,6 +109,20 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
     documentContext.createNewDocument()
   }, [clearActiveTab, documentContext])
 
+  const openDocumentDialog = useCallback(async () => {
+    const path = await open({
+      filters: [
+        { name: 'MarkDoc Package', extensions: ['mdoc'] },
+        { name: 'Markdown', extensions: ['md'] },
+        { name: 'Word', extensions: ['docx'] },
+      ],
+    })
+    if (!path) return
+    const filePath = path as string
+    clearActiveTab()
+    await documentContext.openFileFromPath(filePath, filePath.split('/').pop() || 'untitled')
+  }, [clearActiveTab, documentContext])
+
   useEffect(() => {
     if (activeTabId && activeDocument) {
       documentContext.clearActiveDocument()
@@ -158,7 +173,7 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
     if (activeDocument) {
       setSaving(true)
       try {
-        await saveDocumentTab(activeDocumentTab)
+        await documentContext.saveActiveDocument()
       } finally { setSaving(false) }
       return
     }
@@ -168,7 +183,7 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
     try {
       await saveFileTab(activeTab)
     } finally { setSaving(false) }
-  }, [activeDocument, activeDocumentTab, activeTab, activeTabId, saveDocumentTab, saveFileTab])
+  }, [activeDocument, activeTab, activeTabId, documentContext, saveFileTab])
 
   const handleExportMd = useCallback(async () => {
     if (activeDocument) {
@@ -193,10 +208,16 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
     setSaving(true)
     try {
       let refPath: string | undefined
-      if (!activeDocument && choice.type === 'original') {
+      if (activeDocument && choice.type === 'original') {
+        refPath = activeDocument.presentation.docx?.referenceDocx
+      } else if (!activeDocument && choice.type === 'original') {
         refPath = activeTab?.referenceDocxPath
       } else if (choice.type === 'custom') {
         refPath = choice.path
+      }
+      if (activeDocument) {
+        await documentContext.exportActiveDocx(outputPath, refPath)
+        return
       }
       const ok = await convertMdToDocx(content, outputPath, refPath)
       if (ok && !activeDocument && activeTabId) {
@@ -207,7 +228,7 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
       console.error('Export docx failed:', err)
       alert(String(err))
     } finally { setSaving(false) }
-  }, [activeDocument, content, activeTab, activeTabId, markTabSaved])
+  }, [activeDocument, content, activeTab, activeTabId, markTabSaved, documentContext])
 
   const switchVisibleTab = useCallback((tab: { kind: 'file' | 'document'; id: string }) => {
     if (tab.kind === 'document') {
@@ -241,18 +262,15 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
     onSave: handleSave,
     onExportMd: handleExportMd,
     onExportDocx: () => setExportDocxOpen(true),
-    onOpen: () => file.openFileDialog(),
+    onOpen: openDocumentDialog,
     onOpenFolder: handleOpenFolder,
     pageWidth,
     onPageWidthChange,
     recentFiles: file.recentFiles,
-    openFileFromPath: (path, name) => {
-      documentContext.clearActiveDocument()
-      file.openFileFromPath(path, name)
-    },
+    openFileFromPath: (path, name) => { clearActiveTab(); void documentContext.openFileFromPath(path, name) },
     removeRecentFile: file.removeRecentFile,
     clearRecentFiles: file.clearRecentFiles,
-  }), [createNewDocument, handleSave, handleExportMd, file, documentContext, pageWidth, onPageWidthChange])
+  }), [createNewDocument, handleSave, handleExportMd, file, documentContext, clearActiveTab, openDocumentDialog, pageWidth, onPageWidthChange])
 
   // Ctrl+滚轮缩放
   useEffect(() => {
@@ -295,11 +313,11 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
         if (active) handleCloseVisibleTab(active)
       }
       if (e.key === 'n') { e.preventDefault(); createNewDocument() }
-      if (e.key === 'o') { e.preventDefault(); file.openFileDialog() }
+      if (e.key === 'o') { e.preventDefault(); void openDocumentDialog() }
     }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
-  }, [handleSave, activeVisibleTabKey, visibleTabs, handleCloseVisibleTab, createNewDocument, switchToNextTab, documentContext, file])
+  }, [handleSave, activeVisibleTabKey, visibleTabs, handleCloseVisibleTab, createNewDocument, switchToNextTab, openDocumentDialog])
 
   return (
     <div className="flex flex-col h-full overflow-hidden relative">
@@ -352,7 +370,7 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
             <p className="text-muted-foreground/40 text-sm">{t('editor.startEditing')}</p>
             <div className="flex gap-2">
               <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border hover:bg-accent cursor-pointer text-foreground text-xs bg-transparent" onClick={createNewDocument}>{t('common.newFile')}</button>
-              <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border hover:bg-accent cursor-pointer text-foreground text-xs bg-transparent" onClick={() => { documentContext.clearActiveDocument(); file.openFileDialog() }}>{t('common.open')}</button>
+              <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border hover:bg-accent cursor-pointer text-foreground text-xs bg-transparent" onClick={() => void openDocumentDialog()}>{t('common.open')}</button>
               <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border hover:bg-accent cursor-pointer text-foreground text-xs bg-transparent" onClick={handleOpenFolder}>{t('common.openFolder')}</button>
             </div>
           </div>
@@ -415,7 +433,7 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
       <ExportDocxDialog
         open={exportDocxOpen}
         onOpenChange={setExportDocxOpen}
-        originalDocxPath={activeDocument ? undefined : activeTab?.referenceDocxPath}
+        originalDocxPath={activeDocument?.presentation.docx?.referenceDocx ?? activeTab?.referenceDocxPath}
         defaultFileName={activeDocument ? activeDocumentTab?.name : activeTab?.name}
         currentFilePath={activeDocument ? undefined : activeTab?.path}
         onExport={handleExportDocxWithTemplate}

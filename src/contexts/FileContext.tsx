@@ -71,6 +71,8 @@ async function docxToMarkdown(inputPath: string): Promise<string> {
   throw new Error(result.error || 'Conversion failed')
 }
 
+// Compatibility context during DocumentContext migration.
+// New document open/save behavior belongs in DocumentContext.
 const FileContext = createContext<FileContextValue | null>(null)
 
 export function FileProvider({ children }: { children: ReactNode }) {

@@ -1,8 +1,9 @@
 use super::manifest::MarkDocManifest;
 use super::validator::{is_safe_package_path, is_url_like};
 use serde::{Deserialize, Serialize};
-use std::fs::File;
-use std::io::Read;
+use std::fs::{self, File};
+use std::io::{copy, Read};
+use std::path::Path;
 use zip::ZipArchive;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -10,6 +11,15 @@ pub struct PackageReadResult {
     pub manifest: MarkDocManifest,
     pub entries: Vec<String>,
     pub quarantined: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PackageExtractResult {
+    pub manifest: MarkDocManifest,
+    pub entries: Vec<String>,
+    pub quarantined: Vec<String>,
+    pub workspace_root: String,
+    pub entry_path: String,
 }
 
 #[tauri::command]
@@ -66,6 +76,57 @@ pub fn read_mdoc_package(package_path: String) -> Result<PackageReadResult, Stri
         manifest,
         entries,
         quarantined,
+    })
+}
+
+#[tauri::command]
+pub fn extract_mdoc_package(
+    package_path: String,
+    workspace_root: String,
+) -> Result<PackageExtractResult, String> {
+    let inspected = read_mdoc_package(package_path.clone())?;
+    let workspace = Path::new(&workspace_root);
+    fs::create_dir_all(workspace).map_err(|_| "workspace.createFailed".to_string())?;
+
+    let file = File::open(package_path).map_err(|_| "package.openFailed".to_string())?;
+    let mut archive = ZipArchive::new(file).map_err(|_| "package.corrupted".to_string())?;
+
+    fs::write(
+        workspace.join("manifest.json"),
+        serde_json::to_vec(&inspected.manifest).map_err(|_| "package.invalidManifest".to_string())?,
+    )
+    .map_err(|_| "workspace.createFailed".to_string())?;
+
+    for entry_name in &inspected.entries {
+        // Entries originate from read_mdoc_package, but validate again at the write boundary.
+        if is_url_like(entry_name) || !is_safe_package_path(entry_name) || should_quarantine(entry_name) {
+            return Err("package.unsafePath".to_string());
+        }
+        let output_path = workspace.join(entry_name);
+        let mut entry = archive
+            .by_name(entry_name)
+            .map_err(|_| "package.corrupted".to_string())?;
+        if entry.is_dir() {
+            fs::create_dir_all(&output_path).map_err(|_| "workspace.createFailed".to_string())?;
+            continue;
+        }
+        let parent = output_path.parent().ok_or_else(|| "package.unsafePath".to_string())?;
+        fs::create_dir_all(parent).map_err(|_| "workspace.createFailed".to_string())?;
+        let mut output = File::create(output_path).map_err(|_| "workspace.createFailed".to_string())?;
+        copy(&mut entry, &mut output).map_err(|_| "package.corrupted".to_string())?;
+    }
+
+    let entry_path = workspace.join(&inspected.manifest.entry);
+    if !entry_path.is_file() {
+        return Err("package.missingEntry".to_string());
+    }
+
+    Ok(PackageExtractResult {
+        manifest: inspected.manifest,
+        entries: inspected.entries,
+        quarantined: inspected.quarantined,
+        workspace_root,
+        entry_path: entry_path.to_string_lossy().to_string(),
     })
 }
 
@@ -181,5 +242,37 @@ mod tests {
             read_mdoc_package(quarantined.to_string_lossy().to_string()).unwrap_err(),
             "package.missingEntry"
         );
+    }
+
+    #[test]
+    fn extracts_only_safe_entries_and_writes_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+        let package_path = dir.path().join("report.mdoc");
+        let workspace_path = dir.path().join("workspace");
+        let manifest = MarkDocManifest::new("document.md");
+        write_package(
+            &package_path,
+            &manifest,
+            &[
+                ("document.md", "# Extracted"),
+                ("assets/image.png", "image-data"),
+                ("presentation/style.css", "body {}"),
+                ("../outside.txt", "unsafe"),
+            ],
+        );
+
+        let result = extract_mdoc_package(
+            package_path.to_string_lossy().to_string(),
+            workspace_path.to_string_lossy().to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(result.entry_path, workspace_path.join("document.md").to_string_lossy());
+        assert_eq!(fs::read_to_string(&result.entry_path).unwrap(), "# Extracted");
+        assert_eq!(fs::read_to_string(workspace_path.join("assets/image.png")).unwrap(), "image-data");
+        assert!(workspace_path.join("manifest.json").exists());
+        assert!(!workspace_path.join("presentation/style.css").exists());
+        assert!(!dir.path().join("outside.txt").exists());
+        assert_eq!(result.quarantined, vec!["presentation/style.css", "../outside.txt"]);
     }
 }
