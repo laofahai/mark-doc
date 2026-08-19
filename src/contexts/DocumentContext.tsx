@@ -6,7 +6,10 @@ export interface DocumentTab {
   id: string
   documentId: string
   name: string
+  isDirty: boolean
 }
+
+type StoredDocumentTab = Omit<DocumentTab, 'isDirty'>
 
 interface DocumentContextValue {
   tabs: DocumentTab[]
@@ -18,6 +21,8 @@ interface DocumentContextValue {
   closeDocumentTab: (id: string) => void
   clearActiveDocument: () => void
   setActiveMarkdown: (markdown: string) => void
+  getDocumentForTab: (id: string) => DocumentModel | null
+  markDocumentTabSavedAsMarkdown: (id: string, path: string) => void
   markActiveDocumentSavedAsMarkdown: (path: string) => void
 }
 
@@ -31,12 +36,19 @@ function nextId() {
 
 export function DocumentProvider({ children }: { children: ReactNode }) {
   const [documents, setDocuments] = useState<DocumentModel[]>([])
-  const [tabs, setTabs] = useState<DocumentTab[]>([])
+  const [tabs, setTabs] = useState<StoredDocumentTab[]>([])
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
 
   const activeTab = tabs.find(tab => tab.id === activeTabId) || null
   const activeDocument = documents.find(document => document.id === activeTab?.documentId) || null
   const activeSaveDecision = activeDocument ? resolveSaveTarget(activeDocument) : null
+  const documentTabs = useMemo<DocumentTab[]>(() => tabs.map(tab => {
+    const document = documents.find(document => document.id === tab.documentId)
+    return {
+      ...tab,
+      isDirty: Boolean(document?.dirty.markdown || document?.dirty.assets || document?.dirty.presentation),
+    }
+  }), [documents, tabs])
 
   const createNewDocument = useCallback(() => {
     const id = nextId()
@@ -96,10 +108,16 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     ))
   }, [activeDocument])
 
-  const markActiveDocumentSavedAsMarkdown = useCallback((path: string) => {
-    if (!activeDocument) return
+  const getDocumentForTab = useCallback((id: string) => {
+    const tab = tabs.find(tab => tab.id === id)
+    return documents.find(document => document.id === tab?.documentId) || null
+  }, [documents, tabs])
 
-    setDocuments(previous => previous.map(document => document.id === activeDocument.id
+  const markDocumentTabSavedAsMarkdown = useCallback((id: string, path: string) => {
+    const tab = tabs.find(tab => tab.id === id)
+    if (!tab) return
+
+    setDocuments(previous => previous.map(document => document.id === tab.documentId
       ? {
           ...document,
           source: { type: 'markdown', path },
@@ -107,10 +125,15 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         }
       : document
     ))
-  }, [activeDocument])
+  }, [tabs])
+
+  const markActiveDocumentSavedAsMarkdown = useCallback((path: string) => {
+    if (!activeTabId) return
+    markDocumentTabSavedAsMarkdown(activeTabId, path)
+  }, [activeTabId, markDocumentTabSavedAsMarkdown])
 
   const value = useMemo(() => ({
-    tabs,
+    tabs: documentTabs,
     activeTabId,
     activeDocument,
     activeSaveDecision,
@@ -119,9 +142,11 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     closeDocumentTab,
     clearActiveDocument,
     setActiveMarkdown,
+    getDocumentForTab,
+    markDocumentTabSavedAsMarkdown,
     markActiveDocumentSavedAsMarkdown,
   }), [
-    tabs,
+    documentTabs,
     activeTabId,
     activeDocument,
     activeSaveDecision,
@@ -130,6 +155,8 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     closeDocumentTab,
     clearActiveDocument,
     setActiveMarkdown,
+    getDocumentForTab,
+    markDocumentTabSavedAsMarkdown,
     markActiveDocumentSavedAsMarkdown,
   ])
 

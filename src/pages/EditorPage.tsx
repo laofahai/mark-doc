@@ -4,8 +4,9 @@ import type { EditorToolbarActions } from '../components/Editor/EditorToolbarOve
 import { CloseConfirmDialog } from '../components/CloseConfirmDialog'
 import { ExportDocxDialog, type TemplateChoice } from '../components/ExportDocxDialog'
 import { saveAsMarkdown, saveFile, convertMdToDocx } from '../services/file'
-import { useFile } from '../contexts/FileContext'
+import { useFile, type FileTab } from '../contexts/FileContext'
 import { useDocument } from '../contexts/DocumentContext'
+import type { DocumentTab } from '../contexts/DocumentContext'
 import { X, FileText, Globe } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -30,6 +31,12 @@ function getPlainTextLength(md: string): number {
 
 type PageWidth = 'normal' | 'wide' | 'full'
 const PAGE_WIDTH_CLASS = { normal: 'max-w-[800px]', wide: 'max-w-[1100px]', full: '' }
+type VisibleTab = {
+  kind: 'file' | 'document'
+  id: string
+  name: string
+  isDirty: boolean
+}
 
 interface Props {
   pageWidth: PageWidth
@@ -54,9 +61,7 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
       kind: 'document' as const,
       id: tab.id,
       name: tab.name,
-      isDirty: tab.id === documentContext.activeTabId
-        ? Boolean(activeDocument?.dirty.markdown || activeDocument?.dirty.assets || activeDocument?.dirty.presentation)
-        : false,
+      isDirty: tab.isDirty,
     })),
     ...tabs.map(tab => ({
       kind: 'file' as const,
@@ -70,6 +75,33 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
     : activeTabId
       ? `file:${activeTabId}`
       : null
+
+  const switchDocumentVisibleTab = useCallback((id: string) => {
+    clearActiveTab()
+    documentContext.switchDocumentTab(id)
+  }, [clearActiveTab, documentContext])
+
+  const switchFileVisibleTab = useCallback((id: string) => {
+    documentContext.clearActiveDocument()
+    switchTab(id)
+  }, [documentContext, switchTab])
+
+  const activateFallbackAfterClose = useCallback((tab: VisibleTab) => {
+    if (`${tab.kind}:${tab.id}` !== activeVisibleTabKey) return
+
+    if (tab.kind === 'document') {
+      const nextDocument = documentContext.tabs.find(candidate => candidate.id !== tab.id)
+      if (nextDocument) return
+      const nextFile = tabs[0]
+      if (nextFile) switchFileVisibleTab(nextFile.id)
+      return
+    }
+
+    const nextFile = tabs.find(candidate => candidate.id !== tab.id)
+    if (nextFile) return
+    const nextDocument = documentContext.tabs[0]
+    if (nextDocument) switchDocumentVisibleTab(nextDocument.id)
+  }, [activeVisibleTabKey, documentContext.tabs, tabs, switchDocumentVisibleTab, switchFileVisibleTab])
 
   const createNewDocument = useCallback(() => {
     clearActiveTab()
@@ -90,12 +122,43 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
     setTabContent(md)
   }, [activeDocument, documentContext, setTabContent])
 
+  const saveDocumentTab = useCallback(async (tab: DocumentTab | null) => {
+    if (!tab) return false
+    const document = documentContext.getDocumentForTab(tab.id)
+    if (!document) return false
+    const meta = await saveAsMarkdown(document.markdown, tab.name || 'untitled.mdoc')
+    if (!meta) return false
+    documentContext.markDocumentTabSavedAsMarkdown(tab.id, meta.path)
+    return true
+  }, [documentContext])
+
+  const saveFileTab = useCallback(async (tab: FileTab | null) => {
+    if (!tab) return false
+    if (tab.path) {
+      const ok = await saveFile(tab.path, tab.content, tab.referenceDocxPath)
+      if (ok) markTabSaved(tab.id)
+      return ok
+    }
+    const meta = await saveAsMarkdown(tab.content, tab.name)
+    if (!meta) return false
+    markTabSaved(tab.id, meta.path, meta.name, meta.sourceType)
+    return true
+  }, [markTabSaved])
+
+  const saveVisibleTab = useCallback(async (tab: VisibleTab) => {
+    if (tab.kind === 'document') {
+      const documentTab = documentContext.tabs.find(candidate => candidate.id === tab.id) || null
+      return saveDocumentTab(documentTab)
+    }
+    const fileTab = tabs.find(candidate => candidate.id === tab.id) || null
+    return saveFileTab(fileTab)
+  }, [documentContext.tabs, saveDocumentTab, saveFileTab, tabs])
+
   const handleSave = useCallback(async () => {
     if (activeDocument) {
       setSaving(true)
       try {
-        const meta = await saveAsMarkdown(content, activeDocumentTab?.name || 'untitled.mdoc')
-        if (meta) documentContext.markActiveDocumentSavedAsMarkdown(meta.path)
+        await saveDocumentTab(activeDocumentTab)
       } finally { setSaving(false) }
       return
     }
@@ -103,22 +166,15 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
     if (!activeTab || !activeTabId) return
     setSaving(true)
     try {
-      if (activeTab.path) {
-        const ok = await saveFile(activeTab.path, content, activeTab.referenceDocxPath)
-        if (ok) markTabSaved(activeTabId)
-      } else {
-        const meta = await saveAsMarkdown(content, activeTab.name)
-        if (meta) markTabSaved(activeTabId, meta.path, meta.name, meta.sourceType)
-      }
+      await saveFileTab(activeTab)
     } finally { setSaving(false) }
-  }, [activeDocument, activeDocumentTab?.name, content, documentContext, activeTab, activeTabId, markTabSaved])
+  }, [activeDocument, activeDocumentTab, activeTab, activeTabId, saveDocumentTab, saveFileTab])
 
   const handleExportMd = useCallback(async () => {
     if (activeDocument) {
       setSaving(true)
       try {
-        const meta = await saveAsMarkdown(content, activeDocumentTab?.name || 'untitled.mdoc')
-        if (meta) documentContext.markActiveDocumentSavedAsMarkdown(meta.path)
+        await saveDocumentTab(activeDocumentTab)
       } finally { setSaving(false) }
       return
     }
@@ -129,7 +185,7 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
       const meta = await saveAsMarkdown(content, activeTab.name || 'untitled')
       if (meta) markTabSaved(activeTabId, meta.path, meta.name, meta.sourceType)
     } finally { setSaving(false) }
-  }, [activeDocument, activeDocumentTab?.name, content, documentContext, activeTab, activeTabId, markTabSaved])
+  }, [activeDocument, activeDocumentTab, content, activeTab, activeTabId, markTabSaved, saveDocumentTab])
 
   /** 导出 docx，模板和保存路径已由弹窗确定 */
   const handleExportDocxWithTemplate = useCallback(async (choice: TemplateChoice, outputPath: string) => {
@@ -155,25 +211,28 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
 
   const switchVisibleTab = useCallback((tab: { kind: 'file' | 'document'; id: string }) => {
     if (tab.kind === 'document') {
-      clearActiveTab()
-      documentContext.switchDocumentTab(tab.id)
+      switchDocumentVisibleTab(tab.id)
       return
     }
-    documentContext.clearActiveDocument()
-    switchTab(tab.id)
-  }, [clearActiveTab, documentContext, switchTab])
+    switchFileVisibleTab(tab.id)
+  }, [switchDocumentVisibleTab, switchFileVisibleTab])
 
-  const handleCloseVisibleTab = useCallback((tab: { kind: 'file' | 'document'; id: string; name: string; isDirty: boolean }) => {
-    if (tab.isDirty) {
-      setCloseConfirm({ kind: tab.kind, id: tab.id, name: tab.name })
-      return
-    }
+  const closeVisibleTab = useCallback((tab: VisibleTab) => {
+    activateFallbackAfterClose(tab)
     if (tab.kind === 'document') {
       documentContext.closeDocumentTab(tab.id)
       return
     }
     closeTab(tab.id)
-  }, [closeTab, documentContext])
+  }, [activateFallbackAfterClose, closeTab, documentContext])
+
+  const handleCloseVisibleTab = useCallback((tab: VisibleTab) => {
+    if (tab.isDirty) {
+      setCloseConfirm({ kind: tab.kind, id: tab.id, name: tab.name })
+      return
+    }
+    closeVisibleTab(tab)
+  }, [closeVisibleTab])
 
   const handleOpenFolder = () => window.dispatchEvent(new CustomEvent('mark-doc:open-folder'))
 
@@ -182,10 +241,7 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
     onSave: handleSave,
     onExportMd: handleExportMd,
     onExportDocx: () => setExportDocxOpen(true),
-    onOpen: () => {
-      documentContext.clearActiveDocument()
-      file.openFileDialog()
-    },
+    onOpen: () => file.openFileDialog(),
     onOpenFolder: handleOpenFolder,
     pageWidth,
     onPageWidthChange,
@@ -239,7 +295,7 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
         if (active) handleCloseVisibleTab(active)
       }
       if (e.key === 'n') { e.preventDefault(); createNewDocument() }
-      if (e.key === 'o') { e.preventDefault(); documentContext.clearActiveDocument(); file.openFileDialog() }
+      if (e.key === 'o') { e.preventDefault(); file.openFileDialog() }
     }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
@@ -336,21 +392,21 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
           fileName={closeConfirm.name}
           onClose={() => setCloseConfirm(null)}
           onDiscard={() => {
-            if (closeConfirm.kind === 'document') {
-              documentContext.closeDocumentTab(closeConfirm.id)
-            } else {
-              closeTab(closeConfirm.id)
-            }
+            const target = visibleTabs.find(tab => tab.kind === closeConfirm.kind && tab.id === closeConfirm.id)
+            if (target) closeVisibleTab(target)
             setCloseConfirm(null)
           }}
           onSave={async () => {
-            await handleSave()
-            if (closeConfirm.kind === 'document') {
-              documentContext.closeDocumentTab(closeConfirm.id)
-            } else {
-              closeTab(closeConfirm.id)
+            const target = visibleTabs.find(tab => tab.kind === closeConfirm.kind && tab.id === closeConfirm.id)
+            if (!target) {
+              setCloseConfirm(null)
+              return
             }
-            setCloseConfirm(null)
+            const saved = await saveVisibleTab(target)
+            if (saved) {
+              closeVisibleTab(target)
+              setCloseConfirm(null)
+            }
           }}
         />
       )}

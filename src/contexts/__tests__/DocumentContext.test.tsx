@@ -52,4 +52,19 @@ describe('DocumentContext', () => {
     expect(result.current.tabs.map(tab => tab.id)).toEqual([secondTabId])
     expect(result.current.activeTabId).toBe(secondTabId)
   })
+
+  it('keeps dirty state on inactive document tabs', () => {
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <DocumentProvider>{children}</DocumentProvider>
+    )
+    const { result } = renderHook(() => useDocument(), { wrapper })
+
+    act(() => result.current.createNewDocument())
+    const dirtyTabId = result.current.activeTabId!
+    act(() => result.current.setActiveMarkdown('# Dirty'))
+    act(() => result.current.createNewDocument())
+
+    const dirtyTab = result.current.tabs.find(tab => tab.id === dirtyTabId)
+    expect(dirtyTab?.isDirty).toBe(true)
+  })
 })
