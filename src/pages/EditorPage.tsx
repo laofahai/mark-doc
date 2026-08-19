@@ -40,23 +40,66 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
   const { t } = useTranslation()
   const file = useFile()
   const documentContext = useDocument()
-  const { tabs, activeTab, activeTabId, setTabContent, markTabSaved, closeTab, switchTab, externalChange, reloadTab, dismissExternalChange } = file
+  const { tabs, activeTab, activeTabId, setTabContent, markTabSaved, closeTab, switchTab, clearActiveTab, externalChange, reloadTab, dismissExternalChange } = file
   const [, setSaving] = useState(false)
   const [zoom, setZoom] = useState(100)
-  const [closeConfirm, setCloseConfirm] = useState<{ id: string; name: string } | null>(null)
+  const [closeConfirm, setCloseConfirm] = useState<{ kind: 'file' | 'document'; id: string; name: string } | null>(null)
   const [exportDocxOpen, setExportDocxOpen] = useState(false)
   const editorAreaRef = useRef<HTMLDivElement>(null)
-  const content = documentContext.activeDocument?.markdown ?? activeTab?.content ?? ''
+  const activeDocument = documentContext.activeDocument
+  const activeDocumentTab = documentContext.tabs.find(tab => tab.id === documentContext.activeTabId) || null
+  const content = activeDocument?.markdown ?? activeTab?.content ?? ''
+  const visibleTabs = useMemo(() => [
+    ...documentContext.tabs.map(tab => ({
+      kind: 'document' as const,
+      id: tab.id,
+      name: tab.name,
+      isDirty: tab.id === documentContext.activeTabId
+        ? Boolean(activeDocument?.dirty.markdown || activeDocument?.dirty.assets || activeDocument?.dirty.presentation)
+        : false,
+    })),
+    ...tabs.map(tab => ({
+      kind: 'file' as const,
+      id: tab.id,
+      name: tab.name,
+      isDirty: tab.isDirty,
+    })),
+  ], [documentContext.tabs, documentContext.activeTabId, activeDocument, tabs])
+  const activeVisibleTabKey = activeDocument
+    ? `document:${documentContext.activeTabId}`
+    : activeTabId
+      ? `file:${activeTabId}`
+      : null
+
+  const createNewDocument = useCallback(() => {
+    clearActiveTab()
+    documentContext.createNewDocument()
+  }, [clearActiveTab, documentContext])
+
+  useEffect(() => {
+    if (activeTabId && activeDocument) {
+      documentContext.clearActiveDocument()
+    }
+  }, [activeTabId, activeDocument, documentContext])
 
   const handleContentChange = useCallback((md: string) => {
-    if (documentContext.activeDocument) {
+    if (activeDocument) {
       documentContext.setActiveMarkdown(md)
       return
     }
     setTabContent(md)
-  }, [documentContext, setTabContent])
+  }, [activeDocument, documentContext, setTabContent])
 
   const handleSave = useCallback(async () => {
+    if (activeDocument) {
+      setSaving(true)
+      try {
+        const meta = await saveAsMarkdown(content, activeDocumentTab?.name || 'untitled.mdoc')
+        if (meta) documentContext.markActiveDocumentSavedAsMarkdown(meta.path)
+      } finally { setSaving(false) }
+      return
+    }
+
     if (!activeTab || !activeTabId) return
     setSaving(true)
     try {
@@ -68,30 +111,39 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
         if (meta) markTabSaved(activeTabId, meta.path, meta.name, meta.sourceType)
       }
     } finally { setSaving(false) }
-  }, [content, activeTab, activeTabId, markTabSaved])
+  }, [activeDocument, activeDocumentTab?.name, content, documentContext, activeTab, activeTabId, markTabSaved])
 
   const handleExportMd = useCallback(async () => {
+    if (activeDocument) {
+      setSaving(true)
+      try {
+        const meta = await saveAsMarkdown(content, activeDocumentTab?.name || 'untitled.mdoc')
+        if (meta) documentContext.markActiveDocumentSavedAsMarkdown(meta.path)
+      } finally { setSaving(false) }
+      return
+    }
+
     if (!activeTab || !activeTabId) return
     setSaving(true)
     try {
       const meta = await saveAsMarkdown(content, activeTab.name || 'untitled')
       if (meta) markTabSaved(activeTabId, meta.path, meta.name, meta.sourceType)
     } finally { setSaving(false) }
-  }, [content, activeTab, activeTabId, markTabSaved])
+  }, [activeDocument, activeDocumentTab?.name, content, documentContext, activeTab, activeTabId, markTabSaved])
 
   /** 导出 docx，模板和保存路径已由弹窗确定 */
   const handleExportDocxWithTemplate = useCallback(async (choice: TemplateChoice, outputPath: string) => {
-    if (!activeTab || !activeTabId) return
+    if (!activeDocument && (!activeTab || !activeTabId)) return
     setSaving(true)
     try {
       let refPath: string | undefined
-      if (choice.type === 'original') {
-        refPath = activeTab.referenceDocxPath
+      if (!activeDocument && choice.type === 'original') {
+        refPath = activeTab?.referenceDocxPath
       } else if (choice.type === 'custom') {
         refPath = choice.path
       }
       const ok = await convertMdToDocx(content, outputPath, refPath)
-      if (ok) {
+      if (ok && !activeDocument && activeTabId) {
         const name = outputPath.split('/').pop() || 'untitled.docx'
         markTabSaved(activeTabId, outputPath, name, 'docx')
       }
@@ -99,33 +151,52 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
       console.error('Export docx failed:', err)
       alert(String(err))
     } finally { setSaving(false) }
-  }, [content, activeTab, activeTabId, markTabSaved])
+  }, [activeDocument, content, activeTab, activeTabId, markTabSaved])
 
-  const handleCloseTab = useCallback((id: string) => {
-    const tab = tabs.find(t => t.id === id)
-    if (tab?.isDirty) {
-      setCloseConfirm({ id, name: tab.name })
+  const switchVisibleTab = useCallback((tab: { kind: 'file' | 'document'; id: string }) => {
+    if (tab.kind === 'document') {
+      clearActiveTab()
+      documentContext.switchDocumentTab(tab.id)
       return
     }
-    closeTab(id)
-  }, [tabs, closeTab])
+    documentContext.clearActiveDocument()
+    switchTab(tab.id)
+  }, [clearActiveTab, documentContext, switchTab])
+
+  const handleCloseVisibleTab = useCallback((tab: { kind: 'file' | 'document'; id: string; name: string; isDirty: boolean }) => {
+    if (tab.isDirty) {
+      setCloseConfirm({ kind: tab.kind, id: tab.id, name: tab.name })
+      return
+    }
+    if (tab.kind === 'document') {
+      documentContext.closeDocumentTab(tab.id)
+      return
+    }
+    closeTab(tab.id)
+  }, [closeTab, documentContext])
 
   const handleOpenFolder = () => window.dispatchEvent(new CustomEvent('mark-doc:open-folder'))
 
   const editorActions: EditorToolbarActions = useMemo(() => ({
-    onNew: documentContext.createNewDocument,
+    onNew: createNewDocument,
     onSave: handleSave,
     onExportMd: handleExportMd,
     onExportDocx: () => setExportDocxOpen(true),
-    onOpen: () => file.openFileDialog(),
+    onOpen: () => {
+      documentContext.clearActiveDocument()
+      file.openFileDialog()
+    },
     onOpenFolder: handleOpenFolder,
     pageWidth,
     onPageWidthChange,
     recentFiles: file.recentFiles,
-    openFileFromPath: file.openFileFromPath,
+    openFileFromPath: (path, name) => {
+      documentContext.clearActiveDocument()
+      file.openFileFromPath(path, name)
+    },
     removeRecentFile: file.removeRecentFile,
     clearRecentFiles: file.clearRecentFiles,
-  }), [documentContext.createNewDocument, handleSave, handleExportMd, file, pageWidth, onPageWidthChange])
+  }), [createNewDocument, handleSave, handleExportMd, file, documentContext, pageWidth, onPageWidthChange])
 
   // Ctrl+滚轮缩放
   useEffect(() => {
@@ -143,11 +214,11 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
 
   // 切换到下/上一个标签
   const switchToNextTab = useCallback((direction: 1 | -1) => {
-    if (tabs.length < 2 || !activeTabId) return
-    const idx = tabs.findIndex(t => t.id === activeTabId)
-    const next = (idx + direction + tabs.length) % tabs.length
-    switchTab(tabs[next].id)
-  }, [tabs, activeTabId, switchTab])
+    if (visibleTabs.length < 2 || !activeVisibleTabKey) return
+    const idx = visibleTabs.findIndex(tab => `${tab.kind}:${tab.id}` === activeVisibleTabKey)
+    const next = visibleTabs[(idx + direction + visibleTabs.length) % visibleTabs.length]
+    switchVisibleTab(next)
+  }, [visibleTabs, activeVisibleTabKey, switchVisibleTab])
 
   // 快捷键
   useEffect(() => {
@@ -162,13 +233,17 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
       if (!mod) return
       if (e.key === 'a' && !(e.target as HTMLElement).closest('.vditor')) e.preventDefault()
       if (e.key === 's') { e.preventDefault(); handleSave() }
-      if (e.key === 'w' && activeTabId) { e.preventDefault(); handleCloseTab(activeTabId) }
-      if (e.key === 'n') { e.preventDefault(); documentContext.createNewDocument() }
-      if (e.key === 'o') { e.preventDefault(); file.openFileDialog() }
+      if (e.key === 'w' && activeVisibleTabKey) {
+        e.preventDefault()
+        const active = visibleTabs.find(tab => `${tab.kind}:${tab.id}` === activeVisibleTabKey)
+        if (active) handleCloseVisibleTab(active)
+      }
+      if (e.key === 'n') { e.preventDefault(); createNewDocument() }
+      if (e.key === 'o') { e.preventDefault(); documentContext.clearActiveDocument(); file.openFileDialog() }
     }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
-  }, [handleSave, activeTabId, handleCloseTab, documentContext.createNewDocument, switchToNextTab, file])
+  }, [handleSave, activeVisibleTabKey, visibleTabs, handleCloseVisibleTab, createNewDocument, switchToNextTab, documentContext, file])
 
   return (
     <div className="flex flex-col h-full overflow-hidden relative">
@@ -181,19 +256,19 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
         </div>
       )}
       {/* 标签栏（多于1个标签时显示） */}
-      {tabs.length > 1 && (
+      {visibleTabs.length > 1 && (
         <div className="flex items-center border-b border-border shrink-0 px-1 h-9">
           <div className="flex-1 flex items-center overflow-x-auto no-scrollbar">
-            {tabs.map(tab => (
-              <div key={tab.id}
+            {visibleTabs.map(tab => (
+              <div key={`${tab.kind}:${tab.id}`}
                 className={`group flex items-center gap-1 px-2.5 py-1.5 text-[11px] cursor-pointer shrink-0 max-w-[150px] rounded-md transition-colors ${
-                  tab.id === activeTabId ? 'text-foreground bg-accent' : 'text-muted-foreground/50 hover:text-muted-foreground'
+                  `${tab.kind}:${tab.id}` === activeVisibleTabKey ? 'text-foreground bg-accent' : 'text-muted-foreground/50 hover:text-muted-foreground'
                 }`}
-                onClick={() => switchTab(tab.id)}>
+                onClick={() => switchVisibleTab(tab)}>
                 <FileText size={11} className="shrink-0" />
                 <span className="truncate">{tab.name}</span>
                 {tab.isDirty && <span className="w-1 h-1 rounded-full bg-primary shrink-0" />}
-                <button className="p-0 border-none bg-transparent text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground cursor-pointer shrink-0 flex items-center" onClick={(e) => { e.stopPropagation(); handleCloseTab(tab.id) }}>
+                <button className="p-0 border-none bg-transparent text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground cursor-pointer shrink-0 flex items-center" onClick={(e) => { e.stopPropagation(); handleCloseVisibleTab(tab) }}>
                   <X size={10} />
                 </button>
               </div>
@@ -220,8 +295,8 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
           <div className="flex flex-col items-center justify-center h-full gap-4">
             <p className="text-muted-foreground/40 text-sm">{t('editor.startEditing')}</p>
             <div className="flex gap-2">
-              <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border hover:bg-accent cursor-pointer text-foreground text-xs bg-transparent" onClick={documentContext.createNewDocument}>{t('common.newFile')}</button>
-              <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border hover:bg-accent cursor-pointer text-foreground text-xs bg-transparent" onClick={() => file.openFileDialog()}>{t('common.open')}</button>
+              <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border hover:bg-accent cursor-pointer text-foreground text-xs bg-transparent" onClick={createNewDocument}>{t('common.newFile')}</button>
+              <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border hover:bg-accent cursor-pointer text-foreground text-xs bg-transparent" onClick={() => { documentContext.clearActiveDocument(); file.openFileDialog() }}>{t('common.open')}</button>
               <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border hover:bg-accent cursor-pointer text-foreground text-xs bg-transparent" onClick={handleOpenFolder}>{t('common.openFolder')}</button>
             </div>
           </div>
@@ -260,10 +335,21 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
           open={!!closeConfirm}
           fileName={closeConfirm.name}
           onClose={() => setCloseConfirm(null)}
-          onDiscard={() => { closeTab(closeConfirm.id); setCloseConfirm(null) }}
+          onDiscard={() => {
+            if (closeConfirm.kind === 'document') {
+              documentContext.closeDocumentTab(closeConfirm.id)
+            } else {
+              closeTab(closeConfirm.id)
+            }
+            setCloseConfirm(null)
+          }}
           onSave={async () => {
             await handleSave()
-            closeTab(closeConfirm.id)
+            if (closeConfirm.kind === 'document') {
+              documentContext.closeDocumentTab(closeConfirm.id)
+            } else {
+              closeTab(closeConfirm.id)
+            }
             setCloseConfirm(null)
           }}
         />
@@ -273,9 +359,9 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
       <ExportDocxDialog
         open={exportDocxOpen}
         onOpenChange={setExportDocxOpen}
-        originalDocxPath={activeTab?.referenceDocxPath}
-        defaultFileName={activeTab?.name}
-        currentFilePath={activeTab?.path}
+        originalDocxPath={activeDocument ? undefined : activeTab?.referenceDocxPath}
+        defaultFileName={activeDocument ? activeDocumentTab?.name : activeTab?.name}
+        currentFilePath={activeDocument ? undefined : activeTab?.path}
         onExport={handleExportDocxWithTemplate}
       />
     </div>

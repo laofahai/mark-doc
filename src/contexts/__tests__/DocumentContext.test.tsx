@@ -15,4 +15,41 @@ describe('DocumentContext', () => {
     expect(result.current.activeDocument?.source.type).toBe('new')
     expect(result.current.activeSaveDecision?.defaultKind).toBe('mdoc')
   })
+
+  it('marks active document markdown dirty and can clear the active document', () => {
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <DocumentProvider>{children}</DocumentProvider>
+    )
+    const { result } = renderHook(() => useDocument(), { wrapper })
+
+    act(() => result.current.createNewDocument())
+    act(() => result.current.setActiveMarkdown('# Draft'))
+
+    expect(result.current.activeDocument?.markdown).toBe('# Draft')
+    expect(result.current.activeDocument?.dirty.markdown).toBe(true)
+
+    act(() => result.current.clearActiveDocument())
+
+    expect(result.current.activeDocument).toBeNull()
+  })
+
+  it('switches and closes document tabs without depending on FileContext', () => {
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <DocumentProvider>{children}</DocumentProvider>
+    )
+    const { result } = renderHook(() => useDocument(), { wrapper })
+
+    act(() => result.current.createNewDocument())
+    const firstTabId = result.current.activeTabId!
+    act(() => result.current.createNewDocument())
+    const secondTabId = result.current.activeTabId!
+
+    act(() => result.current.switchDocumentTab(firstTabId))
+    expect(result.current.activeTabId).toBe(firstTabId)
+
+    act(() => result.current.closeDocumentTab(firstTabId))
+
+    expect(result.current.tabs.map(tab => tab.id)).toEqual([secondTabId])
+    expect(result.current.activeTabId).toBe(secondTabId)
+  })
 })

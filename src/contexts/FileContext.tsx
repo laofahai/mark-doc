@@ -41,6 +41,7 @@ interface FileContextValue {
   createNewTab: () => void
   closeTab: (id: string) => void
   switchTab: (id: string) => void
+  clearActiveTab: () => void
   reloadTab: (tabId: string) => Promise<void>
   dismissExternalChange: () => void
   removeRecentFile: (path: string) => void
@@ -196,6 +197,10 @@ export function FileProvider({ children }: { children: ReactNode }) {
     setActiveTabId(id)
   }, [])
 
+  const clearActiveTab = useCallback(() => {
+    setActiveTabId(null)
+  }, [])
+
   const reloadTab = useCallback(async (tabId: string) => {
     const tab = tabs.find(t => t.id === tabId)
     if (!tab || !tab.path) return
@@ -288,6 +293,7 @@ export function FileProvider({ children }: { children: ReactNode }) {
       createNewTab,
       closeTab,
       switchTab,
+      clearActiveTab,
       reloadTab,
       dismissExternalChange,
       removeRecentFile,
