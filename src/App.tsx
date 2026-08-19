@@ -4,6 +4,7 @@ import { LinchDesktopProvider, Shell, Separator, addI18nResources } from '@linch
 import { EditorPage } from './pages/EditorPage'
 import { Sidebar } from './components/Sidebar'
 import { FileProvider, useFile } from './contexts/FileContext'
+import { DocumentProvider } from './contexts/DocumentContext'
 import { PandocGuard } from './components/PandocGuard'
 import { SettingsDialog } from './components/SettingsDialog'
 import type { LinchDesktopConfig } from '@linch-tech/desktop-core'
@@ -110,11 +111,13 @@ function AppShell() {
 
 function App() {
   return (
-    <FileProvider>
-      <PandocGuard>
-        <AppShell />
-      </PandocGuard>
-    </FileProvider>
+    <DocumentProvider>
+      <FileProvider>
+        <PandocGuard>
+          <AppShell />
+        </PandocGuard>
+      </FileProvider>
+    </DocumentProvider>
   )
 }
 

@@ -5,6 +5,7 @@ import { CloseConfirmDialog } from '../components/CloseConfirmDialog'
 import { ExportDocxDialog, type TemplateChoice } from '../components/ExportDocxDialog'
 import { saveAsMarkdown, saveFile, convertMdToDocx } from '../services/file'
 import { useFile } from '../contexts/FileContext'
+import { useDocument } from '../contexts/DocumentContext'
 import { X, FileText, Globe } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -38,15 +39,22 @@ interface Props {
 export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
   const { t } = useTranslation()
   const file = useFile()
-  const { tabs, activeTab, activeTabId, setTabContent, markTabSaved, closeTab, switchTab, createNewTab, externalChange, reloadTab, dismissExternalChange } = file
+  const documentContext = useDocument()
+  const { tabs, activeTab, activeTabId, setTabContent, markTabSaved, closeTab, switchTab, externalChange, reloadTab, dismissExternalChange } = file
   const [, setSaving] = useState(false)
   const [zoom, setZoom] = useState(100)
   const [closeConfirm, setCloseConfirm] = useState<{ id: string; name: string } | null>(null)
   const [exportDocxOpen, setExportDocxOpen] = useState(false)
   const editorAreaRef = useRef<HTMLDivElement>(null)
-  const content = activeTab?.content || ''
+  const content = documentContext.activeDocument?.markdown ?? activeTab?.content ?? ''
 
-  const handleContentChange = useCallback((md: string) => setTabContent(md), [setTabContent])
+  const handleContentChange = useCallback((md: string) => {
+    if (documentContext.activeDocument) {
+      documentContext.setActiveMarkdown(md)
+      return
+    }
+    setTabContent(md)
+  }, [documentContext, setTabContent])
 
   const handleSave = useCallback(async () => {
     if (!activeTab || !activeTabId) return
@@ -105,7 +113,7 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
   const handleOpenFolder = () => window.dispatchEvent(new CustomEvent('mark-doc:open-folder'))
 
   const editorActions: EditorToolbarActions = useMemo(() => ({
-    onNew: createNewTab,
+    onNew: documentContext.createNewDocument,
     onSave: handleSave,
     onExportMd: handleExportMd,
     onExportDocx: () => setExportDocxOpen(true),
@@ -117,7 +125,7 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
     openFileFromPath: file.openFileFromPath,
     removeRecentFile: file.removeRecentFile,
     clearRecentFiles: file.clearRecentFiles,
-  }), [createNewTab, handleSave, handleExportMd, file, pageWidth, onPageWidthChange])
+  }), [documentContext.createNewDocument, handleSave, handleExportMd, file, pageWidth, onPageWidthChange])
 
   // Ctrl+滚轮缩放
   useEffect(() => {
@@ -155,12 +163,12 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
       if (e.key === 'a' && !(e.target as HTMLElement).closest('.vditor')) e.preventDefault()
       if (e.key === 's') { e.preventDefault(); handleSave() }
       if (e.key === 'w' && activeTabId) { e.preventDefault(); handleCloseTab(activeTabId) }
-      if (e.key === 'n') { e.preventDefault(); createNewTab() }
+      if (e.key === 'n') { e.preventDefault(); documentContext.createNewDocument() }
       if (e.key === 'o') { e.preventDefault(); file.openFileDialog() }
     }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
-  }, [handleSave, activeTabId, handleCloseTab, createNewTab, switchToNextTab, file])
+  }, [handleSave, activeTabId, handleCloseTab, documentContext.createNewDocument, switchToNextTab, file])
 
   return (
     <div className="flex flex-col h-full overflow-hidden relative">
@@ -196,11 +204,11 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
 
       {/* 编辑区 */}
       <div ref={editorAreaRef} className="flex-1 overflow-y-auto overflow-x-hidden relative">
-        {activeTab ? (
+        {activeTab || documentContext.activeDocument ? (
           <>
             <div className={`h-full mx-auto ${PAGE_WIDTH_CLASS[pageWidth]}`}>
               <Editor
-                key={activeTabId || 'e'}
+                key={documentContext.activeDocument?.id ?? activeTabId ?? 'e'}
                 content={content}
                 onChange={handleContentChange}
                 zoom={zoom}
@@ -212,7 +220,7 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
           <div className="flex flex-col items-center justify-center h-full gap-4">
             <p className="text-muted-foreground/40 text-sm">{t('editor.startEditing')}</p>
             <div className="flex gap-2">
-              <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border hover:bg-accent cursor-pointer text-foreground text-xs bg-transparent" onClick={createNewTab}>{t('common.newFile')}</button>
+              <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border hover:bg-accent cursor-pointer text-foreground text-xs bg-transparent" onClick={documentContext.createNewDocument}>{t('common.newFile')}</button>
               <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border hover:bg-accent cursor-pointer text-foreground text-xs bg-transparent" onClick={() => file.openFileDialog()}>{t('common.open')}</button>
               <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border hover:bg-accent cursor-pointer text-foreground text-xs bg-transparent" onClick={handleOpenFolder}>{t('common.openFolder')}</button>
             </div>
@@ -233,7 +241,7 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
             <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
           </a>
         </div>
-        {activeTab && (
+        {activeTab || documentContext.activeDocument ? (
           <div className="flex items-center gap-2">
             <span>{getPlainTextLength(content)} {t('common.chars')}</span>
             {zoom !== 100 && (
@@ -243,7 +251,7 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
               </>
             )}
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* 关闭确认弹窗 */}
