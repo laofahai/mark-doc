@@ -217,6 +217,8 @@ pub async fn pandoc_convert_file(
     }
 }
 
+/// Legacy file-tab DOCX-to-Markdown compatibility command.
+/// New document imports use document::docx_import and retain extracted assets on disk.
 /// docx 直接转 markdown（一步到位）
 /// 使用 pipe_tables 格式（Vditor 兼容），禁用 simple/multiline/grid tables
 /// 图片提取到临时目录后转为 base64 内嵌
@@ -244,7 +246,7 @@ pub async fn pandoc_docx_to_markdown(
         let mut md = String::from_utf8_lossy(&output.stdout).to_string();
 
         // 将提取的图片转为 base64 内嵌到 markdown
-        md = embed_images_as_base64(&md, &tmp_media);
+        md = embed_images_as_base64_for_legacy_markdown(&md, &tmp_media);
 
         // 清理 pandoc 残留的属性语法 {width=... height=...}
         let attr_re = regex::Regex::new(r"\{[^}]*width=[^}]*\}").unwrap_or_else(|_| regex::Regex::new(r"$^").unwrap());
@@ -497,9 +499,11 @@ fn file_to_base64_uri(path: &str) -> Option<String> {
     Some(format!("data:{};base64,{}", mime_from_ext(path), b64))
 }
 
+/// Legacy compatibility helper: embeds local images as base64 data URIs.
+/// Document workspace imports must retain local asset references instead.
 /// 将 markdown 中引用的本地图片文件转为 base64 data URI
 /// 同时处理 markdown 语法 ![alt](path) 和 HTML <img src="path"> 标签
-fn embed_images_as_base64(md: &str, _base_dir: &str) -> String {
+fn embed_images_as_base64_for_legacy_markdown(md: &str, _base_dir: &str) -> String {
     // 1. 处理 HTML <img> 标签 → 转为 markdown ![alt](base64)
     let html_img_re = regex::Regex::new(r#"<img\s[^>]*src="([^"]+)"[^>]*>"#).unwrap();
     let result = html_img_re.replace_all(md, |caps: &regex::Captures| {

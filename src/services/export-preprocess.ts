@@ -1,4 +1,7 @@
 /**
+ * Legacy file-tab DOCX export preprocessing.
+ *
+ * New document workspace exports use DocxExporter and must not call this module.
  * 导出 docx 前的预处理：
  * 1. 将 mermaid 等代码块渲染为 PNG 临时文件
  * 2. 将 base64 内联图片提取为 PNG 临时文件

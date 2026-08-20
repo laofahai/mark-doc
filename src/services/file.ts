@@ -3,6 +3,9 @@ import { save } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
 import { preprocessForExport, cleanupTempFiles } from './export-preprocess'
 
+// Compatibility-only service for legacy FileContext file tabs.
+// New document open/save/export flows belong to DocumentContext and its services.
+
 export interface FileMetadata {
   path: string
   name: string
@@ -15,6 +18,9 @@ async function removeTempFile(path: string) {
 }
 
 /**
+ * Compatibility-only Pandoc conversion for legacy file tabs.
+ * New document exports use DocxExporter, which invokes export_workspace_to_docx.
+ *
  * 通过 Pandoc 将 markdown 转换为 docx
  * @param referenceDocxPath 可选，指定 --reference-doc（打开的 docx 原文件路径）
  *   - 有值：使用该文件作为样式 reference（保留原 docx 样式）

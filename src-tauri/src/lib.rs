@@ -42,6 +42,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // Legacy FileContext compatibility commands. Document workspace flows use document::*.
             converter::pandoc_convert,
             converter::pandoc_convert_file,
             converter::pandoc_docx_to_html,
