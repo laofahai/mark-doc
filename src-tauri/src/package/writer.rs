@@ -193,18 +193,25 @@ mod tests {
     use zip::ZipArchive;
 
     #[test]
-    fn writes_manifest_and_entry() {
+    fn writes_discoverable_manifest_and_stable_core_paths() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join("workspace");
-        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(root.join("assets")).unwrap();
+        fs::create_dir_all(root.join("presentation")).unwrap();
         fs::write(root.join("document.md"), "# Hello").unwrap();
+        fs::write(root.join("assets/diagram.png"), "image").unwrap();
+        fs::write(root.join("presentation/reference.docx"), "reference").unwrap();
         let output = dir.path().join("report.mdoc");
 
         let result = write_mdoc_package(PackageWriteInput {
             workspace_root: root.to_string_lossy().to_string(),
             output_path: output.to_string_lossy().to_string(),
             entry: "document.md".to_string(),
-            files: vec!["document.md".to_string()],
+            files: vec![
+                "document.md".to_string(),
+                "assets/diagram.png".to_string(),
+                "presentation/reference.docx".to_string(),
+            ],
             manifest: None,
         })
         .unwrap();
@@ -233,12 +240,22 @@ mod tests {
             .read_to_string(&mut document)
             .unwrap();
         let manifest = serde_json::from_str::<MarkDocManifest>(&manifest).unwrap();
+        assert_eq!(manifest.format, "markdoc-package");
+        assert_eq!(manifest.version, 1);
         assert_eq!(manifest.entry, "document.md");
-        assert!(manifest.schema.contains("markdoc-package-v1"));
-        assert!(manifest.spec.contains("markdoc-package-v1"));
+        assert_eq!(
+            manifest.schema,
+            "https://raw.githubusercontent.com/laofahai/mark-doc/main/schemas/markdoc-package-v1.schema.json"
+        );
+        assert_eq!(
+            manifest.spec,
+            "https://github.com/laofahai/mark-doc/blob/main/docs/spec/markdoc-package-v1.md"
+        );
         assert!(readme.contains("manifest.json is the authoritative"));
         assert!(readme.contains("manifest.entry names the canonical Markdown source"));
         assert_eq!(document, "# Hello");
+        assert!(archive.by_name("assets/diagram.png").is_ok());
+        assert!(archive.by_name("presentation/reference.docx").is_ok());
     }
 
     #[test]

@@ -37,24 +37,4 @@ describe('document architecture acceptance', () => {
     expect(containsBase64Images('![x](assets/x.png)')).toBe(false)
   })
 
-  it('keeps mdoc discoverability manifest-driven', () => {
-    const manifest = {
-      format: 'markdoc-package',
-      version: 1,
-      entry: 'document.md',
-      schema: 'https://raw.githubusercontent.com/laofahai/mark-doc/main/schemas/markdoc-package-v1.schema.json',
-      spec: 'https://github.com/laofahai/mark-doc/blob/main/docs/spec/markdoc-package-v1.md',
-    }
-    expect(manifest.format).toBe('markdoc-package')
-    expect(manifest.entry).toBe('document.md')
-    expect(manifest.schema).toContain('markdoc-package-v1')
-    expect(manifest.spec).toContain('markdoc-package-v1')
-  })
-
-  it('keeps core mdoc paths stable without hard-coding every resource path', () => {
-    const stableWriterPaths = ['manifest.json', 'document.md', 'README.md', 'assets/', 'presentation/']
-    expect(stableWriterPaths).toContain('manifest.json')
-    expect(stableWriterPaths).toContain('document.md')
-    expect(stableWriterPaths).toContain('assets/')
-  })
 })
