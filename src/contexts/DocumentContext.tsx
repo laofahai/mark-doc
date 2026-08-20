@@ -5,6 +5,7 @@ import { DocumentService } from '../services/document/document-service'
 import type { DocumentError } from '../services/document/errors'
 import type { OpenDocumentResult } from '../services/document/document-service'
 import { RecoveryService, type RecoveryState } from '../services/document/recovery-service'
+import { PackageSecurityPolicy, type RemoteResourceType } from '../services/security/PackageSecurityPolicy'
 
 export interface DocumentTab {
   id: string
@@ -23,6 +24,7 @@ interface DocumentContextValue {
   resourceSuggestion: OpenDocumentResult['resourceSuggestion'] | null
   documentError: DocumentError | null
   recoveryState: RecoveryState | null
+  activeSecurityPolicy: PackageSecurityPolicy | null
   createNewDocument: () => void
   switchDocumentTab: (id: string) => void
   closeDocumentTab: (id: string) => void
@@ -33,10 +35,17 @@ interface DocumentContextValue {
   markActiveDocumentSavedAsMarkdown: (path: string) => void
   openFileFromPath: (path: string, name: string) => Promise<void>
   saveActiveDocument: () => Promise<void>
+  retryRecovery: (documentId: string) => Promise<void>
+  restoreRecovery: (documentId: string) => void
+  discardRecovery: (documentId: string) => void
   exportActiveDocx: (outputPath: string, referenceDocx?: string) => Promise<void>
+  trustActiveDocument: () => void
+  allowActiveRemoteResourceType: (type: RemoteResourceType) => void
+  allowActiveRemoteDomain: (domain: string) => void
+  allowActiveRemoteUrl: (url: string) => void
   dismissResourceSuggestion: () => void
   dismissDocumentError: () => void
-  dismissRecoveryState: () => void
+  dismissRecoveryState: (documentId?: string) => void
 }
 
 const DocumentContext = createContext<DocumentContextValue | null>(null)
@@ -53,12 +62,15 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
   const [resourceSuggestion, setResourceSuggestion] = useState<OpenDocumentResult['resourceSuggestion'] | null>(null)
   const [documentError, setDocumentError] = useState<DocumentError | null>(null)
-  const [recoveryState, setRecoveryState] = useState<RecoveryState | null>(null)
+  const [recoveryStates, setRecoveryStates] = useState<Record<string, RecoveryState>>({})
+  const [securityPolicies, setSecurityPolicies] = useState<Record<string, PackageSecurityPolicy>>({})
   const documentService = useMemo(() => new DocumentService(), [])
   const recoveryService = useMemo(() => new RecoveryService(), [])
 
   const activeTab = tabs.find(tab => tab.id === activeTabId) || null
   const activeDocument = documents.find(document => document.id === activeTab?.documentId) || null
+  const recoveryState = activeDocument ? recoveryStates[activeDocument.id] ?? null : null
+  const activeSecurityPolicy = activeDocument ? securityPolicies[activeDocument.id] ?? PackageSecurityPolicy.default() : null
   const activeSaveDecision = activeDocument ? resolveSaveTarget(activeDocument) : null
   const documentTabs = useMemo<DocumentTab[]>(() => tabs.map(tab => {
     const document = documents.find(document => document.id === tab.documentId)
@@ -169,32 +181,67 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     setResourceSuggestion(opened.value.resourceSuggestion ?? null)
   }, [documentService, documents, tabs])
 
-  const saveActiveDocument = useCallback(async () => {
-    if (!activeDocument) return
-    const saved = await documentService.saveDocument(activeDocument)
+  const clearRecovery = useCallback((documentId: string) => {
+    recoveryService.clear(documentId)
+    setRecoveryStates(previous => {
+      const remaining = { ...previous }
+      delete remaining[documentId]
+      return remaining
+    })
+  }, [recoveryService])
+
+  const saveDocument = useCallback(async (documentId: string) => {
+    const document = documents.find(candidate => candidate.id === documentId)
+    if (!document) return
+    const saved = await documentService.saveDocument(document)
     if (!saved.ok) {
       setDocumentError(saved.error)
       if (saved.error.code === 'save.failed') {
-        setRecoveryState(recoveryService.recordSaveFailure(activeDocument.id, {
-          draftPath: activeDocument.workspace.entryPath,
+        const recovery = recoveryService.recordSaveFailure(document.id, {
+          draftPath: document.workspace.entryPath,
+          markdown: document.markdown,
           originalUnchanged: true,
           reason: 'unknown',
-        }))
+        })
+        setRecoveryStates(previous => ({ ...previous, [document.id]: recovery }))
       }
       return
     }
     if (!saved.value) return
-    setDocuments(previous => previous.map(document => document.id === activeDocument.id ? saved.value! : document))
+    clearRecovery(document.id)
+    setDocuments(previous => previous.map(candidate => candidate.id === document.id ? saved.value! : candidate))
     const path = saved.value.source.type === 'markdown' ? saved.value.source.path
       : saved.value.source.type === 'package' ? saved.value.source.packagePath
         : null
-    if (path && activeTabId) {
-      setTabs(previous => previous.map(tab => tab.id === activeTabId
+    if (path) {
+      setTabs(previous => previous.map(tab => tab.documentId === document.id
         ? { ...tab, name: path.split('/').pop() || tab.name }
         : tab
       ))
     }
-  }, [activeDocument, activeTabId, documentService, recoveryService])
+  }, [clearRecovery, documentService, documents, recoveryService])
+
+  const saveActiveDocument = useCallback(async () => {
+    if (activeDocument) await saveDocument(activeDocument.id)
+  }, [activeDocument, saveDocument])
+
+  const retryRecovery = useCallback(async (documentId: string) => {
+    await saveDocument(documentId)
+  }, [saveDocument])
+
+  const discardRecovery = useCallback((documentId: string) => {
+    clearRecovery(documentId)
+  }, [clearRecovery])
+
+  const restoreRecovery = useCallback((documentId: string) => {
+    const recovery = recoveryStates[documentId] ?? recoveryService.get(documentId)
+    if (!recovery) return
+    setDocuments(previous => previous.map(document => document.id === documentId
+      ? { ...document, markdown: recovery.markdown, dirty: { ...document.dirty, markdown: true } }
+      : document
+    ))
+    clearRecovery(documentId)
+  }, [clearRecovery, recoveryService, recoveryStates])
 
   const exportActiveDocx = useCallback(async (outputPath: string, referenceDocx?: string) => {
     if (!activeDocument) return
@@ -204,10 +251,23 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
 
   const dismissResourceSuggestion = useCallback(() => setResourceSuggestion(null), [])
   const dismissDocumentError = useCallback(() => setDocumentError(null), [])
-  const dismissRecoveryState = useCallback(() => {
-    if (recoveryState) recoveryService.clear(recoveryState.documentId)
-    setRecoveryState(null)
-  }, [recoveryService, recoveryState])
+  const dismissRecoveryState = useCallback((documentId?: string) => {
+    if (documentId) clearRecovery(documentId)
+    else if (activeDocument) clearRecovery(activeDocument.id)
+  }, [activeDocument, clearRecovery])
+
+  const updateActiveSecurityPolicy = useCallback((update: (policy: PackageSecurityPolicy) => PackageSecurityPolicy) => {
+    if (!activeDocument) return
+    setSecurityPolicies(previous => ({
+      ...previous,
+      [activeDocument.id]: update(previous[activeDocument.id] ?? PackageSecurityPolicy.default()),
+    }))
+  }, [activeDocument])
+
+  const trustActiveDocument = useCallback(() => updateActiveSecurityPolicy(policy => policy.trustDocument()), [updateActiveSecurityPolicy])
+  const allowActiveRemoteResourceType = useCallback((type: RemoteResourceType) => updateActiveSecurityPolicy(policy => policy.allowResourceType(type)), [updateActiveSecurityPolicy])
+  const allowActiveRemoteDomain = useCallback((domain: string) => updateActiveSecurityPolicy(policy => policy.allowDomain(domain)), [updateActiveSecurityPolicy])
+  const allowActiveRemoteUrl = useCallback((url: string) => updateActiveSecurityPolicy(policy => policy.allowUrl(url)), [updateActiveSecurityPolicy])
 
   const value = useMemo(() => ({
     tabs: documentTabs,
@@ -217,6 +277,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     resourceSuggestion,
     documentError,
     recoveryState,
+    activeSecurityPolicy,
     createNewDocument,
     switchDocumentTab,
     closeDocumentTab,
@@ -227,7 +288,14 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     markActiveDocumentSavedAsMarkdown,
     openFileFromPath,
     saveActiveDocument,
+    retryRecovery,
+    restoreRecovery,
+    discardRecovery,
     exportActiveDocx,
+    trustActiveDocument,
+    allowActiveRemoteResourceType,
+    allowActiveRemoteDomain,
+    allowActiveRemoteUrl,
     dismissResourceSuggestion,
     dismissDocumentError,
     dismissRecoveryState,
@@ -239,6 +307,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     resourceSuggestion,
     documentError,
     recoveryState,
+    activeSecurityPolicy,
     createNewDocument,
     switchDocumentTab,
     closeDocumentTab,
@@ -249,7 +318,14 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     markActiveDocumentSavedAsMarkdown,
     openFileFromPath,
     saveActiveDocument,
+    retryRecovery,
+    restoreRecovery,
+    discardRecovery,
     exportActiveDocx,
+    trustActiveDocument,
+    allowActiveRemoteResourceType,
+    allowActiveRemoteDomain,
+    allowActiveRemoteUrl,
     dismissResourceSuggestion,
     dismissDocumentError,
     dismissRecoveryState,

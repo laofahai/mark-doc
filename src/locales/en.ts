@@ -94,6 +94,12 @@ export default {
   security: {
     enableRemoteForDocument: 'Allow this document to load remote resources',
     enableRemoteImages: 'Allow remote images',
+    enableRemoteStyles: 'Allow remote styles',
+    enableRemoteFonts: 'Allow remote fonts',
+    enableRemoteScripts: 'Allow remote scripts',
+    enableOtherRemoteResources: 'Allow other remote resources',
+    allowRemoteDomain: 'Allow {{domain}}',
+    allowRemoteUrl: 'Allow this URL',
     quarantineResource: 'This resource has been quarantined',
   },
   recovery: {

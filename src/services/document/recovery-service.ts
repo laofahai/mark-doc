@@ -1,5 +1,6 @@
 export interface SaveFailureInput {
   draftPath: string
+  markdown: string
   originalUnchanged: boolean
   reason: 'disk-full' | 'permission' | 'cloud-lock' | 'version-conflict' | 'interrupted' | 'unknown'
 }

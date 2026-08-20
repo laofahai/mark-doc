@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { RecoveryPanel } from '../RecoveryPanel'
 import { PackageSecurityPanel } from '../PackageSecurityPanel'
@@ -25,10 +25,50 @@ describe('recovery and security panels', () => {
     render(<PackageSecurityPanel
       quarantined={['presentation/print.css', 'presentation/reference.docx']}
       onTrustDocument={vi.fn()}
-      onAllowImages={vi.fn()}
+      onAllowResourceType={vi.fn()}
+      onAllowDomain={vi.fn()}
+      onAllowUrl={vi.fn()}
     />)
 
     expect(screen.getByText('presentation/print.css')).toBeInTheDocument()
-    expect(screen.getByText('security.enableRemoteForDocument')).toBeInTheDocument()
+    expect(screen.queryByText('security.enableRemoteForDocument')).not.toBeInTheDocument()
+  })
+
+  it('does not render when no package resources are quarantined', () => {
+    const { container } = render(<PackageSecurityPanel
+      quarantined={[]}
+      onTrustDocument={vi.fn()}
+      onAllowResourceType={vi.fn()}
+      onAllowDomain={vi.fn()}
+      onAllowUrl={vi.fn()}
+    />)
+
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('renders and invokes scoped trust controls for quarantined remote resources', () => {
+    const onTrustDocument = vi.fn()
+    const onAllowResourceType = vi.fn()
+    const onAllowDomain = vi.fn()
+    const onAllowUrl = vi.fn()
+    const remoteUrl = 'https://images.example.com/diagram.png'
+
+    render(<PackageSecurityPanel
+      quarantined={[remoteUrl]}
+      onTrustDocument={onTrustDocument}
+      onAllowResourceType={onAllowResourceType}
+      onAllowDomain={onAllowDomain}
+      onAllowUrl={onAllowUrl}
+    />)
+
+    fireEvent.click(screen.getByText('security.enableRemoteForDocument'))
+    fireEvent.click(screen.getByText('security.enableRemoteImages'))
+    fireEvent.click(screen.getByText('security.allowRemoteDomain'))
+    fireEvent.click(screen.getByText('security.allowRemoteUrl'))
+
+    expect(onTrustDocument).toHaveBeenCalledOnce()
+    expect(onAllowResourceType).toHaveBeenCalledWith('image')
+    expect(onAllowDomain).toHaveBeenCalledWith('images.example.com')
+    expect(onAllowUrl).toHaveBeenCalledWith(remoteUrl)
   })
 })

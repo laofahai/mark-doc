@@ -62,10 +62,12 @@ describe('document session and save strategy', () => {
     const recovery = new RecoveryService()
     const state = recovery.recordSaveFailure('doc-1', {
       draftPath: '/tmp/recovery/doc-1/document.md',
+      markdown: '# Preserved draft',
       originalUnchanged: true,
       reason: 'cloud-lock',
     })
     expect(state.priority).toEqual(['content-preserved', 'original-unchanged', 'user-visible'])
+    expect(recovery.get('doc-1')?.markdown).toBe('# Preserved draft')
   })
 
   it('stores sessions by document id', () => {

@@ -12,7 +12,6 @@ import { useDocument } from '../contexts/DocumentContext'
 import type { DocumentTab } from '../contexts/DocumentContext'
 import { X, FileText, Globe } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { PackageSecurityPolicy } from '../services/security/PackageSecurityPolicy'
 
 /** 从 markdown 源码中提取纯文本，用于字数统计 */
 function getPlainTextLength(md: string): number {
@@ -56,7 +55,6 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
   const [zoom, setZoom] = useState(100)
   const [closeConfirm, setCloseConfirm] = useState<{ kind: 'file' | 'document'; id: string; name: string } | null>(null)
   const [exportDocxOpen, setExportDocxOpen] = useState(false)
-  const [, setPackageSecurityPolicy] = useState(() => PackageSecurityPolicy.default())
   const editorAreaRef = useRef<HTMLDivElement>(null)
   const activeDocument = documentContext.activeDocument
   const activeDocumentTab = documentContext.tabs.find(tab => tab.id === documentContext.activeTabId) || null
@@ -148,6 +146,7 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
     const meta = await saveAsMarkdown(document.markdown, tab.name || 'untitled.mdoc')
     if (!meta) return false
     documentContext.markDocumentTabSavedAsMarkdown(tab.id, meta.path)
+    documentContext.discardRecovery(document.id)
     return true
   }, [documentContext])
 
@@ -348,16 +347,18 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
       {documentContext.recoveryState && (
         <RecoveryPanel
           state={documentContext.recoveryState}
-          onRetry={() => void handleSave()}
-          onSaveAs={() => void handleExportMd()}
-          onRestore={documentContext.dismissRecoveryState}
-          onDiscard={documentContext.dismissRecoveryState}
+          onRetry={() => void documentContext.retryRecovery(documentContext.recoveryState!.documentId)}
+          onSaveAs={() => void saveDocumentTab(documentContext.tabs.find(tab => tab.documentId === documentContext.recoveryState!.documentId) ?? null)}
+          onRestore={() => documentContext.restoreRecovery(documentContext.recoveryState!.documentId)}
+          onDiscard={() => documentContext.discardRecovery(documentContext.recoveryState!.documentId)}
         />
       )}
       <PackageSecurityPanel
         quarantined={documentContext.activeDocument?.workspace.packageQuarantined ?? []}
-        onTrustDocument={() => setPackageSecurityPolicy(policy => policy.trustDocument())}
-        onAllowImages={() => setPackageSecurityPolicy(policy => policy.allowResourceType('image'))}
+        onTrustDocument={documentContext.trustActiveDocument}
+        onAllowResourceType={documentContext.allowActiveRemoteResourceType}
+        onAllowDomain={documentContext.allowActiveRemoteDomain}
+        onAllowUrl={documentContext.allowActiveRemoteUrl}
       />
       {/* 标签栏（多于1个标签时显示） */}
       {visibleTabs.length > 1 && (

@@ -1,8 +1,22 @@
 import { act, renderHook } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { DocumentService } from '../../services/document/document-service'
 import { DocumentProvider, useDocument } from '../DocumentContext'
 
+const saveDocument = vi.fn()
+
+vi.mock('../../services/document/document-service', () => ({
+  DocumentService: vi.fn(),
+}))
+
 describe('DocumentContext', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(DocumentService).mockImplementation(function DocumentServiceMock() {
+      return { saveDocument } as unknown as DocumentService
+    })
+  })
+
   it('creates new document tabs with mdoc default save kind', () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <DocumentProvider>{children}</DocumentProvider>
@@ -81,5 +95,60 @@ describe('DocumentContext', () => {
 
     const dirtyTab = result.current.tabs.find(tab => tab.id === dirtyTabId)
     expect(dirtyTab?.isDirty).toBe(true)
+  })
+
+  it('restores a failed save snapshot only for the document that owns it', async () => {
+    const wrapper = ({ children }: { children: React.ReactNode }) => <DocumentProvider>{children}</DocumentProvider>
+    const { result } = renderHook(() => useDocument(), { wrapper })
+    saveDocument.mockResolvedValueOnce({ ok: false, error: { code: 'save.failed', messageKey: 'errors.save.failed' } })
+
+    act(() => result.current.createNewDocument())
+    const firstTabId = result.current.activeTabId!
+    act(() => result.current.setActiveMarkdown('# Recovery snapshot'))
+    await act(async () => { await result.current.saveActiveDocument() })
+    const recoveryDocumentId = result.current.activeDocument!.id
+
+    act(() => result.current.setActiveMarkdown('# Changed after failure'))
+    act(() => result.current.createNewDocument())
+    expect(result.current.recoveryState).toBeNull()
+
+    act(() => result.current.switchDocumentTab(firstTabId))
+    expect(result.current.recoveryState?.documentId).toBe(recoveryDocumentId)
+    act(() => result.current.restoreRecovery(recoveryDocumentId))
+
+    expect(result.current.activeDocument?.markdown).toBe('# Recovery snapshot')
+    expect(result.current.activeDocument?.dirty.markdown).toBe(true)
+    expect(result.current.recoveryState).toBeNull()
+  })
+
+  it('clears a recovery record after a successful retry and retains per-document policy', async () => {
+    const wrapper = ({ children }: { children: React.ReactNode }) => <DocumentProvider>{children}</DocumentProvider>
+    const { result } = renderHook(() => useDocument(), { wrapper })
+    saveDocument
+      .mockResolvedValueOnce({ ok: false, error: { code: 'save.failed', messageKey: 'errors.save.failed' } })
+      .mockImplementationOnce(async document => ({ ok: true, value: { ...document, dirty: { markdown: false, assets: false, presentation: false } } }))
+
+    act(() => result.current.createNewDocument())
+    const firstTabId = result.current.activeTabId!
+    act(() => result.current.setActiveMarkdown('# Retry'))
+    await act(async () => { await result.current.saveActiveDocument() })
+    const recoveryDocumentId = result.current.activeDocument!.id
+
+    act(() => result.current.allowActiveRemoteResourceType('image'))
+    act(() => result.current.allowActiveRemoteDomain('styles.example.com'))
+    act(() => result.current.allowActiveRemoteUrl('https://cdn.example.com/allowed.css'))
+    expect(result.current.activeSecurityPolicy?.canLoadRemote('https://example.com/image.png', 'image')).toBe(true)
+    expect(result.current.activeSecurityPolicy?.canLoadRemote('https://example.com/style.css', 'style')).toBe(false)
+    expect(result.current.activeSecurityPolicy?.canLoadRemote('https://styles.example.com/style.css', 'style')).toBe(true)
+    expect(result.current.activeSecurityPolicy?.canLoadRemote('https://cdn.example.com/allowed.css', 'style')).toBe(true)
+    act(() => result.current.trustActiveDocument())
+    expect(result.current.activeSecurityPolicy?.canLoadRemote('https://example.com/image.png', 'image')).toBe(true)
+    await act(async () => { await result.current.retryRecovery(recoveryDocumentId) })
+    expect(result.current.recoveryState).toBeNull()
+
+    act(() => result.current.createNewDocument())
+    expect(result.current.activeSecurityPolicy?.canLoadRemote('https://example.com/image.png', 'image')).toBe(false)
+    act(() => result.current.switchDocumentTab(firstTabId))
+    expect(result.current.activeSecurityPolicy?.canLoadRemote('https://example.com/image.png', 'image')).toBe(true)
   })
 })

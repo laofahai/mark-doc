@@ -94,6 +94,12 @@ export default {
   security: {
     enableRemoteForDocument: '允许此文档加载远程资源',
     enableRemoteImages: '允许远程图片',
+    enableRemoteStyles: '允许远程样式',
+    enableRemoteFonts: '允许远程字体',
+    enableRemoteScripts: '允许远程脚本',
+    enableOtherRemoteResources: '允许其他远程资源',
+    allowRemoteDomain: '允许 {{domain}}',
+    allowRemoteUrl: '允许此 URL',
     quarantineResource: '此资源已被隔离',
   },
   recovery: {
