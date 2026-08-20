@@ -3,6 +3,8 @@ import Editor from '../components/Editor/Editor'
 import type { EditorToolbarActions } from '../components/Editor/EditorToolbarOverlay'
 import { CloseConfirmDialog } from '../components/CloseConfirmDialog'
 import { ExportDocxDialog, type TemplateChoice } from '../components/ExportDocxDialog'
+import { RecoveryPanel } from '../components/RecoveryPanel'
+import { PackageSecurityPanel } from '../components/PackageSecurityPanel'
 import { saveAsMarkdown, saveFile, convertMdToDocx } from '../services/file'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useFile, type FileTab } from '../contexts/FileContext'
@@ -10,6 +12,7 @@ import { useDocument } from '../contexts/DocumentContext'
 import type { DocumentTab } from '../contexts/DocumentContext'
 import { X, FileText, Globe } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { PackageSecurityPolicy } from '../services/security/PackageSecurityPolicy'
 
 /** 从 markdown 源码中提取纯文本，用于字数统计 */
 function getPlainTextLength(md: string): number {
@@ -53,6 +56,7 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
   const [zoom, setZoom] = useState(100)
   const [closeConfirm, setCloseConfirm] = useState<{ kind: 'file' | 'document'; id: string; name: string } | null>(null)
   const [exportDocxOpen, setExportDocxOpen] = useState(false)
+  const [, setPackageSecurityPolicy] = useState(() => PackageSecurityPolicy.default())
   const editorAreaRef = useRef<HTMLDivElement>(null)
   const activeDocument = documentContext.activeDocument
   const activeDocumentTab = documentContext.tabs.find(tab => tab.id === documentContext.activeTabId) || null
@@ -341,6 +345,20 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
           <button className="px-2.5 py-1 rounded text-xs bg-transparent text-muted-foreground hover:text-foreground border border-border cursor-pointer" onClick={documentContext.dismissResourceSuggestion}>{t('common.done')}</button>
         </div>
       )}
+      {documentContext.recoveryState && (
+        <RecoveryPanel
+          state={documentContext.recoveryState}
+          onRetry={() => void handleSave()}
+          onSaveAs={() => void handleExportMd()}
+          onRestore={documentContext.dismissRecoveryState}
+          onDiscard={documentContext.dismissRecoveryState}
+        />
+      )}
+      <PackageSecurityPanel
+        quarantined={documentContext.activeDocument?.workspace.packageQuarantined ?? []}
+        onTrustDocument={() => setPackageSecurityPolicy(policy => policy.trustDocument())}
+        onAllowImages={() => setPackageSecurityPolicy(policy => policy.allowResourceType('image'))}
+      />
       {/* 标签栏（多于1个标签时显示） */}
       {visibleTabs.length > 1 && (
         <div className="flex items-center border-b border-border shrink-0 px-1 h-9">

@@ -20,7 +20,11 @@ describe('PackageImporter', () => {
       ok: true,
       value: {
         source: { type: 'package', packagePath: '/docs/report.mdoc', extractedWorkspacePath: '/tmp/markdoc/package-1' },
-        workspace: { rootPath: '/tmp/markdoc/package-1', entryPath: '/tmp/markdoc/package-1/document.md' },
+        workspace: {
+          rootPath: '/tmp/markdoc/package-1',
+          entryPath: '/tmp/markdoc/package-1/document.md',
+          packageQuarantined: ['presentation/style.css'],
+        },
         markdown: '# Package',
         dirty: { markdown: false, assets: false, presentation: false },
       },

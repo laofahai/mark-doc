@@ -62,6 +62,7 @@ export class PackageImporter {
         entryPath: result.entry_path,
         packageEntries: result.entries,
         packageManifest: result.manifest,
+        packageQuarantined: result.quarantined,
       }
       return ok({
         id,

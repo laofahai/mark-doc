@@ -4,6 +4,7 @@ import { resolveSaveTarget, type SaveTargetDecision } from '../services/document
 import { DocumentService } from '../services/document/document-service'
 import type { DocumentError } from '../services/document/errors'
 import type { OpenDocumentResult } from '../services/document/document-service'
+import { RecoveryService, type RecoveryState } from '../services/document/recovery-service'
 
 export interface DocumentTab {
   id: string
@@ -21,6 +22,7 @@ interface DocumentContextValue {
   activeSaveDecision: SaveTargetDecision | null
   resourceSuggestion: OpenDocumentResult['resourceSuggestion'] | null
   documentError: DocumentError | null
+  recoveryState: RecoveryState | null
   createNewDocument: () => void
   switchDocumentTab: (id: string) => void
   closeDocumentTab: (id: string) => void
@@ -34,6 +36,7 @@ interface DocumentContextValue {
   exportActiveDocx: (outputPath: string, referenceDocx?: string) => Promise<void>
   dismissResourceSuggestion: () => void
   dismissDocumentError: () => void
+  dismissRecoveryState: () => void
 }
 
 const DocumentContext = createContext<DocumentContextValue | null>(null)
@@ -50,7 +53,9 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
   const [resourceSuggestion, setResourceSuggestion] = useState<OpenDocumentResult['resourceSuggestion'] | null>(null)
   const [documentError, setDocumentError] = useState<DocumentError | null>(null)
+  const [recoveryState, setRecoveryState] = useState<RecoveryState | null>(null)
   const documentService = useMemo(() => new DocumentService(), [])
+  const recoveryService = useMemo(() => new RecoveryService(), [])
 
   const activeTab = tabs.find(tab => tab.id === activeTabId) || null
   const activeDocument = documents.find(document => document.id === activeTab?.documentId) || null
@@ -169,6 +174,13 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     const saved = await documentService.saveDocument(activeDocument)
     if (!saved.ok) {
       setDocumentError(saved.error)
+      if (saved.error.code === 'save.failed') {
+        setRecoveryState(recoveryService.recordSaveFailure(activeDocument.id, {
+          draftPath: activeDocument.workspace.entryPath,
+          originalUnchanged: true,
+          reason: 'unknown',
+        }))
+      }
       return
     }
     if (!saved.value) return
@@ -182,7 +194,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         : tab
       ))
     }
-  }, [activeDocument, activeTabId, documentService])
+  }, [activeDocument, activeTabId, documentService, recoveryService])
 
   const exportActiveDocx = useCallback(async (outputPath: string, referenceDocx?: string) => {
     if (!activeDocument) return
@@ -192,6 +204,10 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
 
   const dismissResourceSuggestion = useCallback(() => setResourceSuggestion(null), [])
   const dismissDocumentError = useCallback(() => setDocumentError(null), [])
+  const dismissRecoveryState = useCallback(() => {
+    if (recoveryState) recoveryService.clear(recoveryState.documentId)
+    setRecoveryState(null)
+  }, [recoveryService, recoveryState])
 
   const value = useMemo(() => ({
     tabs: documentTabs,
@@ -200,6 +216,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     activeSaveDecision,
     resourceSuggestion,
     documentError,
+    recoveryState,
     createNewDocument,
     switchDocumentTab,
     closeDocumentTab,
@@ -213,6 +230,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     exportActiveDocx,
     dismissResourceSuggestion,
     dismissDocumentError,
+    dismissRecoveryState,
   }), [
     documentTabs,
     activeTabId,
@@ -220,6 +238,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     activeSaveDecision,
     resourceSuggestion,
     documentError,
+    recoveryState,
     createNewDocument,
     switchDocumentTab,
     closeDocumentTab,
@@ -233,6 +252,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     exportActiveDocx,
     dismissResourceSuggestion,
     dismissDocumentError,
+    dismissRecoveryState,
   ])
 
   return <DocumentContext.Provider value={value}>{children}</DocumentContext.Provider>
