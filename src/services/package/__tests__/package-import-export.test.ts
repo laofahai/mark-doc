@@ -26,6 +26,7 @@ describe('package import/export wrappers', () => {
     const workspace = createTemporaryWorkspace('/tmp/markdoc/doc-1', 'test')
     const result = await exporter.export(workspace, {
       outputPath: '/docs/report.mdoc',
+      entry: 'document.md',
       files: ['document.md', 'assets/a.png'],
     })
     expect(result.ok).toBe(true)
@@ -35,6 +36,31 @@ describe('package import/export wrappers', () => {
         outputPath: '/docs/report.mdoc',
         entry: 'document.md',
         files: ['document.md', 'assets/a.png'],
+      },
+    })
+  })
+
+  it('preserves the manifest entry and safe workspace file list when repacking', async () => {
+    vi.clearAllMocks()
+    vi.mocked(invoke).mockResolvedValueOnce({ outputPath: '/docs/report.mdoc', recoveryPath: null })
+    const exporter = new PackageExporter()
+    const workspace = createTemporaryWorkspace('/tmp/markdoc/doc-2', 'test')
+    const manifest = { format: 'markdoc-package', version: 1, entry: 'content/main.md' }
+
+    await exporter.export(workspace, {
+      outputPath: '/docs/report.mdoc',
+      entry: 'content/main.md',
+      files: ['content/main.md', 'assets/chart.png', 'presentation/reference.docx'],
+      manifest,
+    })
+
+    expect(invoke).toHaveBeenCalledWith('write_mdoc_package', {
+      input: {
+        workspaceRoot: '/tmp/markdoc/doc-2',
+        outputPath: '/docs/report.mdoc',
+        entry: 'content/main.md',
+        files: ['content/main.md', 'assets/chart.png', 'presentation/reference.docx'],
+        manifest,
       },
     })
   })

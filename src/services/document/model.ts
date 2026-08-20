@@ -17,6 +17,8 @@ export interface DocumentWorkspace {
   assetsPath?: string
   presentationPath?: string
   manifestPath?: string
+  packageEntries?: string[]
+  packageManifest?: object & { entry?: string }
   storage: WorkspaceStorage
 }
 

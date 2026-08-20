@@ -9,6 +9,10 @@ export interface PackageManifest {
   format: 'markdoc-package'
   version: number
   entry: string
+  schema?: string
+  spec?: string
+  createdBy?: { name: string }
+  presentation?: { print?: string; docxReference?: string }
 }
 
 export interface PackageInspectResult {
@@ -56,6 +60,8 @@ export class PackageImporter {
       const workspace = {
         ...createTemporaryWorkspace(result.workspace_root, `package-import-${id}`),
         entryPath: result.entry_path,
+        packageEntries: result.entries,
+        packageManifest: result.manifest,
       }
       return ok({
         id,
@@ -64,7 +70,9 @@ export class PackageImporter {
         markdown,
         metadata: {},
         assets: { references: findLocalAssetReferences(markdown) },
-        presentation: {},
+        presentation: result.manifest.presentation?.docxReference
+          ? { docx: { referenceDocx: result.manifest.presentation.docxReference } }
+          : {},
         dirty: { markdown: false, assets: false, presentation: false },
       })
     } catch (cause) {

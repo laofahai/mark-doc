@@ -329,6 +329,18 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
           <button className="px-2.5 py-1 rounded text-xs bg-transparent text-muted-foreground hover:text-foreground border border-border cursor-pointer" onClick={dismissExternalChange}>{t('editor.ignore')}</button>
         </div>
       )}
+      {documentContext.documentError && (
+        <div className="flex items-center gap-2 px-4 py-2 bg-destructive/10 border-b border-destructive/30 text-sm shrink-0">
+          <span className="flex-1 text-foreground">{t(documentContext.documentError.messageKey, documentContext.documentError.params)}</span>
+          <button className="px-2.5 py-1 rounded text-xs bg-transparent text-muted-foreground hover:text-foreground border border-border cursor-pointer" onClick={documentContext.dismissDocumentError}>{t('common.done')}</button>
+        </div>
+      )}
+      {documentContext.resourceSuggestion && (
+        <div className="flex items-center gap-2 px-4 py-2 bg-primary/10 border-b border-primary/30 text-sm shrink-0">
+          <span className="flex-1 text-foreground">{t('document.suggestPackage')}</span>
+          <button className="px-2.5 py-1 rounded text-xs bg-transparent text-muted-foreground hover:text-foreground border border-border cursor-pointer" onClick={documentContext.dismissResourceSuggestion}>{t('common.done')}</button>
+        </div>
+      )}
       {/* 标签栏（多于1个标签时显示） */}
       {visibleTabs.length > 1 && (
         <div className="flex items-center border-b border-border shrink-0 px-1 h-9">

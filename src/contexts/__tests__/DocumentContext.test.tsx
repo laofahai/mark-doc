@@ -25,6 +25,10 @@ describe('DocumentContext', () => {
     expect(result.current.openFileFromPath).toEqual(expect.any(Function))
     expect(result.current.saveActiveDocument).toEqual(expect.any(Function))
     expect(result.current.exportActiveDocx).toEqual(expect.any(Function))
+    expect(result.current.resourceSuggestion).toBeNull()
+    expect(result.current.documentError).toBeNull()
+    expect(result.current.dismissResourceSuggestion).toEqual(expect.any(Function))
+    expect(result.current.dismissDocumentError).toEqual(expect.any(Function))
   })
 
   it('marks active document markdown dirty and can clear the active document', () => {

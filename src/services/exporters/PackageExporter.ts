@@ -4,7 +4,9 @@ import type { DocumentWorkspace } from '../document/model'
 
 export interface PackageExportOptions {
   outputPath: string
+  entry: string
   files: string[]
+  manifest?: object
 }
 
 export interface PackageExportResult {
@@ -22,8 +24,9 @@ export class PackageExporter {
         input: {
           workspaceRoot: workspace.rootPath,
           outputPath: options.outputPath,
-          entry: 'document.md',
+          entry: options.entry,
           files: options.files,
+          ...(options.manifest && { manifest: options.manifest }),
         },
       })
       return ok(result)

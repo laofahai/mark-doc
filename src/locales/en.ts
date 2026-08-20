@@ -103,6 +103,9 @@ export default {
     discardDraft: 'Discard draft',
   },
   errors: {
+    open: {
+      failed: 'Failed to open document: {{path}}',
+    },
     workspace: {
       noRoot: 'Workspace has no filesystem root',
     },

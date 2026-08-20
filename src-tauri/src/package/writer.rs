@@ -13,6 +13,8 @@ pub struct PackageWriteInput {
     pub entry: String,
     #[serde(default)]
     pub files: Vec<String>,
+    #[serde(default)]
+    pub manifest: Option<MarkDocManifest>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,8 +30,11 @@ pub fn write_mdoc_package(input: PackageWriteInput) -> Result<PackageWriteResult
     let tmp_path = output_path.with_extension("mdoc.tmp");
     let recovery_path = output_path.with_extension("mdoc.bak");
 
-    let manifest = MarkDocManifest::new(&input.entry);
+    let manifest = input.manifest.unwrap_or_else(|| MarkDocManifest::new(&input.entry));
     manifest.validate()?;
+    if manifest.entry != input.entry {
+        return Err("package.invalidManifest".to_string());
+    }
 
     if input
         .files
@@ -56,10 +61,12 @@ pub fn write_mdoc_package(input: PackageWriteInput) -> Result<PackageWriteResult
         zip.write_all(&manifest_json)
             .map_err(|_| "save.failed".to_string())?;
 
-        zip.start_file("README.md", options)
-            .map_err(|_| "save.failed".to_string())?;
-        zip.write_all(package_readme_hint().as_bytes())
-            .map_err(|_| "save.failed".to_string())?;
+        if !input.files.iter().any(|path| path == "README.md") {
+            zip.start_file("README.md", options)
+                .map_err(|_| "save.failed".to_string())?;
+            zip.write_all(package_readme_hint().as_bytes())
+                .map_err(|_| "save.failed".to_string())?;
+        }
 
         for package_path in &input.files {
             let absolute_path = workspace_root.join(package_path);
@@ -198,6 +205,7 @@ mod tests {
             output_path: output.to_string_lossy().to_string(),
             entry: "document.md".to_string(),
             files: vec!["document.md".to_string()],
+            manifest: None,
         })
         .unwrap();
 
@@ -234,6 +242,38 @@ mod tests {
     }
 
     #[test]
+    fn preserves_manifest_entry_and_safe_resources_when_repacking() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("workspace");
+        fs::create_dir_all(root.join("assets")).unwrap();
+        fs::create_dir_all(root.join("presentation")).unwrap();
+        fs::create_dir_all(root.join("content")).unwrap();
+        fs::write(root.join("content/main.md"), "# Hello").unwrap();
+        fs::write(root.join("assets/chart.png"), "image").unwrap();
+        fs::write(root.join("presentation/reference.docx"), "reference").unwrap();
+        let output = dir.path().join("report.mdoc");
+        let mut manifest = MarkDocManifest::new("content/main.md");
+        manifest.presentation = Some(crate::package::manifest::ManifestPresentation {
+            print: None,
+            docx_reference: Some("presentation/reference.docx".to_string()),
+        });
+
+        write_mdoc_package(PackageWriteInput {
+            workspace_root: root.to_string_lossy().to_string(),
+            output_path: output.to_string_lossy().to_string(),
+            entry: "content/main.md".to_string(),
+            files: vec!["content/main.md".to_string(), "assets/chart.png".to_string(), "presentation/reference.docx".to_string()],
+            manifest: Some(manifest.clone()),
+        }).unwrap();
+
+        let mut archive = ZipArchive::new(File::open(output).unwrap()).unwrap();
+        let saved_manifest: MarkDocManifest = serde_json::from_reader(archive.by_name("manifest.json").unwrap()).unwrap();
+        assert_eq!(saved_manifest, manifest);
+        assert!(archive.by_name("assets/chart.png").is_ok());
+        assert!(archive.by_name("presentation/reference.docx").is_ok());
+    }
+
+    #[test]
     fn requires_the_entry_once_in_files() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join("workspace");
@@ -251,6 +291,7 @@ mod tests {
                     output_path: output.to_string_lossy().to_string(),
                     entry: "document.md".to_string(),
                     files,
+                    manifest: None,
                 })
                 .unwrap_err(),
                 "package.missingEntry"
@@ -272,6 +313,7 @@ mod tests {
             output_path: output.to_string_lossy().to_string(),
             entry: "document.md".to_string(),
             files: vec!["document.md".to_string()],
+            manifest: None,
         })
         .unwrap();
 
@@ -332,6 +374,7 @@ mod tests {
                 output_path: output.to_string_lossy().to_string(),
                 entry: "document.md".to_string(),
                 files: vec!["document.md".to_string(), "missing.png".to_string()],
+                manifest: None,
             })
             .unwrap_err(),
             "package.missingEntry"

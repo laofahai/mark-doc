@@ -65,3 +65,33 @@ Complete.
 
 - Vite reports pre-existing large output chunks during `build:check`; this does not fail the build.
 - Rust emits the pre-existing unused `app` warning in `src-tauri/src/lib.rs`.
+
+## Fix Round 1
+
+### What Changed
+
+- Package save now passes the manifest-defined entry and the complete safe workspace entry list to `PackageExporter` instead of replacing packages with only `document.md`.
+- Imported package workspaces retain their validated manifest and safe entry list. Repacking preserves a non-default `manifest.entry`, assets, presentation files, README content, and manifest metadata.
+- The Rust writer accepts an optional validated manifest and does not generate a second README when the package already contains one.
+- `DocumentService.openPath()` preserves Markdown resource suggestions and normalizes read/save/export exceptions into stable document error results.
+- `DocumentContext` retains dismissible resource-suggestion and document-error state. `EditorPage` presents both states using stable locale keys, and successful Save As updates the active tab name.
+
+### TDD Evidence
+
+- RED: `cargo test package::writer::tests::preserves_manifest_entry_and_safe_resources_when_repacking` failed because `PackageWriteInput` did not accept `manifest`.
+- GREEN: the same test passed after manifest/entry/resource preservation was implemented.
+- RED: `npm test -- src/services/package/__tests__/package-import-export.test.ts` showed `PackageExporter` still emitted `document.md` and omitted `manifest`.
+- GREEN: the focused exporter test passed after forwarding the caller-provided entry, file list, and manifest.
+- RED: the extended DocumentContext contract test failed because resource suggestion and stable error state were undefined.
+- GREEN: the focused context test passed after adding the state and dismiss actions.
+
+### Verification
+
+- `npm test`: 14 files, 56 tests passed.
+- `npm run build:check`: passed (`tsc -b && vite build`).
+- `cargo test`: 31 tests passed.
+
+### Review Notes
+
+- Package files remain filtered through a safe relative-path check before packaging. Quarantined entries are absent from the imported workspace list and cannot be repacked.
+- The existing Vite chunk-size and Rust unused-`app` warnings remain non-blocking.

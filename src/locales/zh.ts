@@ -103,6 +103,9 @@ export default {
     discardDraft: '丢弃草稿',
   },
   errors: {
+    open: {
+      failed: '打开文档失败：{{path}}',
+    },
     workspace: {
       noRoot: '文档工作区没有文件系统根目录',
     },

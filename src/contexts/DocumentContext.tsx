@@ -2,6 +2,8 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 import type { DocumentModel } from '../services/document/model'
 import { resolveSaveTarget, type SaveTargetDecision } from '../services/document/save-strategy'
 import { DocumentService } from '../services/document/document-service'
+import type { DocumentError } from '../services/document/errors'
+import type { OpenDocumentResult } from '../services/document/document-service'
 
 export interface DocumentTab {
   id: string
@@ -17,6 +19,8 @@ interface DocumentContextValue {
   activeTabId: string | null
   activeDocument: DocumentModel | null
   activeSaveDecision: SaveTargetDecision | null
+  resourceSuggestion: OpenDocumentResult['resourceSuggestion'] | null
+  documentError: DocumentError | null
   createNewDocument: () => void
   switchDocumentTab: (id: string) => void
   closeDocumentTab: (id: string) => void
@@ -28,6 +32,8 @@ interface DocumentContextValue {
   openFileFromPath: (path: string, name: string) => Promise<void>
   saveActiveDocument: () => Promise<void>
   exportActiveDocx: (outputPath: string, referenceDocx?: string) => Promise<void>
+  dismissResourceSuggestion: () => void
+  dismissDocumentError: () => void
 }
 
 const DocumentContext = createContext<DocumentContextValue | null>(null)
@@ -42,6 +48,8 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   const [documents, setDocuments] = useState<DocumentModel[]>([])
   const [tabs, setTabs] = useState<StoredDocumentTab[]>([])
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
+  const [resourceSuggestion, setResourceSuggestion] = useState<OpenDocumentResult['resourceSuggestion'] | null>(null)
+  const [documentError, setDocumentError] = useState<DocumentError | null>(null)
   const documentService = useMemo(() => new DocumentService(), [])
 
   const activeTab = tabs.find(tab => tab.id === activeTabId) || null
@@ -145,32 +153,53 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       return
     }
     const opened = await documentService.openPath(path)
-    if (!opened.ok) throw new Error(opened.error.code)
-    const tab = { id: `tab-${opened.value.id}`, documentId: opened.value.id, name }
-    setDocuments(previous => [...previous, opened.value])
+    if (!opened.ok) {
+      setDocumentError(opened.error)
+      return
+    }
+    const tab = { id: `tab-${opened.value.document.id}`, documentId: opened.value.document.id, name }
+    setDocuments(previous => [...previous, opened.value.document])
     setTabs(previous => [...previous, tab])
     setActiveTabId(tab.id)
+    setResourceSuggestion(opened.value.resourceSuggestion ?? null)
   }, [documentService, documents, tabs])
 
   const saveActiveDocument = useCallback(async () => {
     if (!activeDocument) return
     const saved = await documentService.saveDocument(activeDocument)
-    if (!saved.ok) throw new Error(saved.error.code)
+    if (!saved.ok) {
+      setDocumentError(saved.error)
+      return
+    }
     if (!saved.value) return
     setDocuments(previous => previous.map(document => document.id === activeDocument.id ? saved.value! : document))
-  }, [activeDocument, documentService])
+    const path = saved.value.source.type === 'markdown' ? saved.value.source.path
+      : saved.value.source.type === 'package' ? saved.value.source.packagePath
+        : null
+    if (path && activeTabId) {
+      setTabs(previous => previous.map(tab => tab.id === activeTabId
+        ? { ...tab, name: path.split('/').pop() || tab.name }
+        : tab
+      ))
+    }
+  }, [activeDocument, activeTabId, documentService])
 
   const exportActiveDocx = useCallback(async (outputPath: string, referenceDocx?: string) => {
     if (!activeDocument) return
     const exported = await documentService.exportDocx(activeDocument, outputPath, referenceDocx)
-    if (!exported.ok) throw new Error(exported.error.code)
+    if (!exported.ok) setDocumentError(exported.error)
   }, [activeDocument, documentService])
+
+  const dismissResourceSuggestion = useCallback(() => setResourceSuggestion(null), [])
+  const dismissDocumentError = useCallback(() => setDocumentError(null), [])
 
   const value = useMemo(() => ({
     tabs: documentTabs,
     activeTabId,
     activeDocument,
     activeSaveDecision,
+    resourceSuggestion,
+    documentError,
     createNewDocument,
     switchDocumentTab,
     closeDocumentTab,
@@ -182,11 +211,15 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     openFileFromPath,
     saveActiveDocument,
     exportActiveDocx,
+    dismissResourceSuggestion,
+    dismissDocumentError,
   }), [
     documentTabs,
     activeTabId,
     activeDocument,
     activeSaveDecision,
+    resourceSuggestion,
+    documentError,
     createNewDocument,
     switchDocumentTab,
     closeDocumentTab,
@@ -198,6 +231,8 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     openFileFromPath,
     saveActiveDocument,
     exportActiveDocx,
+    dismissResourceSuggestion,
+    dismissDocumentError,
   ])
 
   return <DocumentContext.Provider value={value}>{children}</DocumentContext.Provider>
