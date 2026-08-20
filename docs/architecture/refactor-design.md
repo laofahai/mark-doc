@@ -437,6 +437,17 @@ fields so external validators and AI tools can understand the package without
 MarkDoc installed. A packaged `README.md` may be generated as a human/AI hint,
 but it is explanatory only; readers must treat the manifest as the authority.
 
+DOCX and PDF are delivery formats; Markdown remains the canonical semantic source whenever possible.
+
+Manifest metadata is authoritative. Packaged README text is explanatory only.
+AI tools should discover `.mdoc` by unzipping the package, reading
+`manifest.json`, following schema/spec metadata, and treating `manifest.entry` as
+the canonical semantic source.
+
+MarkDoc writes stable core paths: `manifest.json`, `document.md`, `README.md`,
+`assets/`, and `presentation/`. Readers must still honor `manifest.entry` and
+accept safe relative resource paths outside `assets/` for compatibility.
+
 The package writer must use atomic replacement and recovery metadata. The
 priority order is:
 

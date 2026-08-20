@@ -1,6 +1,6 @@
 # MarkDoc
 
-**A desktop Markdown and Word document editor** built with Tauri v2, React, and Vditor.
+**A modern document editor with Markdown at its core.**
 
 ![Version](https://img.shields.io/badge/version-0.1.2-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
@@ -11,11 +11,12 @@
 ## Features
 
 - **WYSIWYG Markdown editing** -- powered by Vditor with custom Lucide toolbar icons
+- **MarkDoc documents (`.mdoc`)** -- package clean Markdown, assets, and presentation resources into one portable file
 - **Bidirectional DOCX conversion** -- seamless Markdown to Word and Word to Markdown via Pandoc
 - **Template-based export** -- export DOCX with built-in template, original style, or custom reference.docx
 - **Built-in Chinese document template** -- Heiti headings, Songti body text, 1.5x line spacing, A4 layout
 - **Mermaid diagram export** -- diagrams are rendered to PNG images during DOCX export
-- **Base64 image embedding** -- images from DOCX are embedded as base64 for seamless editing
+- **Clean asset import** -- DOCX images are stored as files and referenced by portable relative Markdown paths
 - **Multi-tab editing** -- open multiple files with unsaved changes confirmation
 - **File tree sidebar** -- browse files with real-time folder watching, drill-in/drill-out navigation
 - **File association** -- register as handler for `.md` and `.docx` files on macOS/Windows
@@ -25,6 +26,11 @@
 - **Keyboard shortcuts** -- Cmd+S save, Cmd+N new, Cmd+O open, Cmd+W close, Ctrl+Tab switch tabs
 - **Zoom and layout** -- adjustable page width (normal/wide/full), Ctrl+scroll zoom, word count
 - **Settings dialog** -- configure language, theme, and document export template
+
+`.mdoc` files are ordinary ZIP packages. `manifest.json` is the authority for
+the format (`format`, `version`, `entry`, `schema`, and `spec`); `manifest.entry`
+names the canonical Markdown source. A packaged README may help humans and AI
+tools orient themselves, but importers must validate the manifest.
 
 ## Screenshots
 
@@ -111,18 +117,19 @@ MIT License -- see [LICENSE](LICENSE) for details.
 
 # MarkDoc
 
-**桌面端 Markdown + Word 文档编辑器**，基于 Tauri v2、React 和 Vditor 构建。
+**以 Markdown 为核心的现代文档编辑器。**
 
 [官网](https://linch.tech/zh/products/mark-doc)
 
 ## 功能特性
 
 - **所见即所得 Markdown 编辑** -- 基于 Vditor，自定义 Lucide 工具栏图标
+- **MarkDoc 文档（`.mdoc`）** -- 将干净的 Markdown、资源和演示资源打包为一个可移植文件
 - **双向 DOCX 转换** -- 通过 Pandoc 实现 Markdown 与 Word 文档无缝互转
 - **模板化导出** -- 导出 DOCX 时可选内置模板、保留原样式或自定义模板
 - **中文正式文档模板** -- 内置模板：黑体标题、宋体正文、1.5 倍行距、A4 版面
 - **Mermaid 图表导出** -- 导出 DOCX 时自动将 Mermaid 图表渲染为 PNG
-- **Base64 图片内嵌** -- 导入 DOCX 时图片转为 base64 嵌入编辑器
+- **干净资源导入** -- DOCX 图片保存为文件，并由可移植的相对 Markdown 路径引用
 - **多标签页编辑** -- 同时打开多个文件，关闭未保存文件时提示确认
 - **文件树侧边栏** -- 实时目录监听，支持上钻/下钻导航
 - **文件类型关联** -- 在 macOS/Windows 注册为 .md 和 .docx 的打开方式
@@ -132,6 +139,10 @@ MIT License -- see [LICENSE](LICENSE) for details.
 - **快捷键** -- Cmd+S 保存、Cmd+N 新建、Cmd+O 打开、Cmd+W 关闭、Ctrl+Tab 切换标签
 - **缩放与排版** -- 页面宽度调节（标准/宽屏/全宽）、Ctrl+滚轮缩放、字数统计
 - **设置对话框** -- 配置语言、主题和文档导出模板
+
+`.mdoc` 文件是普通 ZIP 包。`manifest.json` 是格式的权威定义，包含
+`format`、`version`、`entry`、`schema` 和 `spec`；`manifest.entry` 指向规范
+Markdown 源。包内 README 可帮助用户和 AI 工具了解文件，但导入器必须校验清单。
 
 ## 截图
 

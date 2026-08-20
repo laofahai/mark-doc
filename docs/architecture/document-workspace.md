@@ -11,8 +11,8 @@ proprietary document format. The goal is:
 > Edit like a document editor, preserve meaning as clean Markdown, and keep the
 > document readable by humans, Git, search, and AI without MarkDoc installed.
 
-DOCX and PDF are delivery formats. Markdown remains the canonical semantic
-source whenever possible. Visual presentation is a replaceable rendering layer.
+DOCX and PDF are delivery formats; Markdown remains the canonical semantic source whenever possible.
+Visual presentation is a replaceable rendering layer.
 
 Internationalization is a core product requirement, not a UI polish task.
 MarkDoc should work naturally for Chinese and English users, and the architecture
@@ -110,6 +110,11 @@ installed. The package therefore carries machine-readable discovery in
 
 `README.md` is never the protocol authority. Readers must validate
 `manifest.json`; writers should include the README only as a convenience hint.
+
+Manifest metadata is authoritative. Packaged README text is explanatory only.
+AI tools should discover `.mdoc` by unzipping the package, reading
+`manifest.json`, following schema/spec metadata, and treating `manifest.entry` as
+the canonical semantic source.
 
 ## One Document, Many Files
 
@@ -517,11 +522,9 @@ Core package paths are stable:
 - `assets/`: default MarkDoc-managed asset directory
 - `presentation/`: default MarkDoc-managed presentation directory
 
-Readers must use `manifest.entry` as the source of truth, so packages from other
-tools may use another safe relative Markdown entry path. Importers should accept
-safe relative resource paths outside `assets/` for compatibility, but MarkDoc's
-own writer should normalize newly managed resources into the stable directories
-above.
+MarkDoc writes stable core paths: `manifest.json`, `document.md`, `README.md`,
+`assets/`, and `presentation/`. Readers must still honor `manifest.entry` and
+accept safe relative resource paths outside `assets/` for compatibility.
 
 ## Security Rules
 
