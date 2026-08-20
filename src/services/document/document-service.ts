@@ -1,4 +1,4 @@
-import { mkdir, readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
+import { copyFile, mkdir, readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
 import { save } from '@tauri-apps/plugin-dialog'
 import { err, ok, type Result } from './errors'
 import type { DocumentSession } from './session-store'
@@ -8,8 +8,9 @@ import { DocxImporter } from '../importers/DocxImporter'
 import { PackageImporter } from '../importers/PackageImporter'
 import { DocxExporter } from '../exporters/DocxExporter'
 import { PackageExporter } from '../exporters/PackageExporter'
-import type { DocumentModel } from './model'
+import type { DocumentModel, DocumentWorkspace } from './model'
 import { resolveSaveTarget } from './save-strategy'
+import { createTemporaryWorkspace } from './workspace-service'
 
 export interface OpenDocumentResult extends DocumentSession {
   resourceSuggestion?: {
@@ -86,7 +87,17 @@ export class DocumentService {
       const workspace = await this.ensurePackageWorkspace(document)
       const entry = this.packageEntryPath(document, workspace)
       const files = this.packageFiles(document, entry)
-      const exported = await this.packageExporter.export(workspace, { outputPath: packagePath, entry, files, manifest: document.workspace.packageManifest })
+      const preservedFiles = document.source.type === 'package'
+        ? [...new Set((document.workspace.packageQuarantined ?? []).filter(path => this.isSafePackagePath(path)))].sort()
+        : []
+      const exported = await this.packageExporter.export(workspace, {
+        outputPath: packagePath,
+        entry,
+        files,
+        manifest: document.workspace.packageManifest,
+        sourcePackagePath: document.source.type === 'package' ? document.source.packagePath : undefined,
+        preservedFiles,
+      })
       if (!exported.ok) return exported
       return ok({ ...document, source: { type: 'package', packagePath, extractedWorkspacePath: workspace.rootPath! }, workspace, dirty: { markdown: false, assets: false, presentation: false } })
     } catch (cause) {
@@ -114,26 +125,47 @@ export class DocumentService {
     return sourcePath.split('/').pop()!.replace(/\.(md|mdoc|docx)$/i, '') + `.${kind === 'markdown' ? 'md' : kind}`
   }
 
-  private async ensurePackageWorkspace(document: DocumentModel) {
-    const rootPath = document.workspace.rootPath || this.nextWorkspaceRoot('save')
-    const entry = this.packageEntryPath(document, { ...document.workspace, rootPath })
-    const workspace = { ...document.workspace, rootPath, entryPath: `${rootPath}/${entry}`, storage: { type: 'temporary' as const, rootPath, recoveryKey: document.id } }
+  private async ensurePackageWorkspace(document: DocumentModel): Promise<DocumentWorkspace> {
+    if (document.source.type === 'package') {
+      const rootPath = document.workspace.rootPath || document.source.extractedWorkspacePath
+      const entry = this.packageEntryPath(document, { ...document.workspace, rootPath })
+      const workspace = {
+        ...document.workspace,
+        rootPath,
+        entryPath: `${rootPath}/${entry}`,
+        storage: { type: 'temporary' as const, rootPath, recoveryKey: document.id },
+      }
+      await mkdir(rootPath, { recursive: true })
+      await writeTextFile(workspace.entryPath, document.markdown)
+      return workspace
+    }
+
+    const rootPath = this.nextWorkspaceRoot('save')
+    const workspace = createTemporaryWorkspace(rootPath, document.id)
     await mkdir(rootPath, { recursive: true })
     await writeTextFile(workspace.entryPath, document.markdown)
+    for (const reference of document.assets.references.filter(path => this.isSafePackagePath(path))) {
+      if (!document.workspace.rootPath) continue
+      const targetPath = `${rootPath}/${reference}`
+      const parent = targetPath.slice(0, targetPath.lastIndexOf('/'))
+      if (parent) await mkdir(parent, { recursive: true })
+      await copyFile(`${document.workspace.rootPath}/${reference}`, targetPath)
+    }
     return workspace
   }
 
   private packageEntryPath(document: DocumentModel, workspace: Pick<DocumentModel['workspace'], 'entryPath' | 'rootPath' | 'packageManifest'>) {
+    if (document.source.type !== 'package') return 'document.md'
     const manifestEntry = typeof workspace.packageManifest?.entry === 'string' ? workspace.packageManifest.entry : undefined
     if (manifestEntry) return manifestEntry
     if (workspace.rootPath && workspace.entryPath.startsWith(`${workspace.rootPath}/`)) {
       return workspace.entryPath.slice(workspace.rootPath.length + 1)
     }
-    return document.source.type === 'markdown' ? document.source.path.split('/').pop() || 'document.md' : 'document.md'
+    return 'document.md'
   }
 
   private packageFiles(document: DocumentModel, entry: string) {
-    const candidates = document.workspace.packageEntries?.length
+    const candidates = document.source.type === 'package' && document.workspace.packageEntries?.length
       ? document.workspace.packageEntries
       : [entry, ...document.assets.references]
     return [...new Set(candidates.filter(path => this.isSafePackagePath(path)))].sort()

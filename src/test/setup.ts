@@ -5,11 +5,12 @@ import { vi } from 'vitest'
 vi.mock('@tauri-apps/plugin-fs', () => ({
   readTextFile: vi.fn(),
   writeTextFile: vi.fn(),
+  copyFile: vi.fn(),
   writeFile: vi.fn(),
   readFile: vi.fn(),
   mkdir: vi.fn(),
   remove: vi.fn(),
-  watch: vi.fn(),
+  watch: vi.fn(() => Promise.resolve(vi.fn())),
 }))
 
 vi.mock('@tauri-apps/plugin-dialog', () => ({
@@ -19,6 +20,10 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
+}))
+
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn(() => Promise.resolve(vi.fn())),
 }))
 
 // Mock @linch-tech/desktop-core

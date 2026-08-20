@@ -10,9 +10,10 @@ export class DocumentSessionStore {
   private sessions = new Map<string, DocumentSession>()
 
   add(document: DocumentModel) {
+    const dirty = document.dirty.markdown || document.dirty.assets || document.dirty.presentation
     this.sessions.set(document.id, {
       document,
-      saveState: 'clean',
+      saveState: dirty ? 'dirty' : 'clean',
       externalState: 'current',
     })
   }

@@ -3,6 +3,7 @@ import { readTextFile } from '@tauri-apps/plugin-fs'
 import { err, ok, type Result } from '../document/errors'
 import type { DocumentModel } from '../document/model'
 import { createTemporaryWorkspace } from '../document/workspace-service'
+import { findLocalAssetReferences } from '../assets/AssetManager'
 
 let documentCounter = 0
 
@@ -40,7 +41,7 @@ export class DocxImporter {
         workspace,
         markdown,
         metadata: {},
-        assets: { references: [] },
+        assets: { references: findLocalAssetReferences(markdown) },
         presentation: { docx: { referenceDocx: inputPath } },
         dirty: { markdown: false, assets: false, presentation: false },
       })

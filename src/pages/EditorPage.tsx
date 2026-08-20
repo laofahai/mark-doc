@@ -10,6 +10,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { useFile, type FileTab } from '../contexts/FileContext'
 import { useDocument } from '../contexts/DocumentContext'
 import type { DocumentTab } from '../contexts/DocumentContext'
+import type { DocumentSaveStatus } from '../contexts/DocumentContext'
 import { X, FileText, Globe } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -139,28 +140,28 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
     setTabContent(md)
   }, [activeDocument, documentContext, setTabContent])
 
-  const saveDocumentTab = useCallback(async (tab: DocumentTab | null) => {
+  const saveDocumentTab = useCallback(async (tab: DocumentTab | null): Promise<DocumentSaveStatus> => {
+    return tab ? documentContext.saveDocumentTab(tab.id) : 'failed'
+  }, [documentContext])
+
+  const exportDocumentMarkdown = useCallback(async (tab: DocumentTab | null) => {
     if (!tab) return false
     const document = documentContext.getDocumentForTab(tab.id)
     if (!document) return false
-    const meta = await saveAsMarkdown(document.markdown, tab.name || 'untitled.mdoc')
-    if (!meta) return false
-    documentContext.markDocumentTabSavedAsMarkdown(tab.id, meta.path)
-    documentContext.discardRecovery(document.id)
-    return true
+    return Boolean(await saveAsMarkdown(document.markdown, tab.name.replace(/\.mdoc$/i, '.md') || 'untitled.md'))
   }, [documentContext])
 
-  const saveFileTab = useCallback(async (tab: FileTab | null) => {
-    if (!tab) return false
+  const saveFileTab = useCallback(async (tab: FileTab | null): Promise<DocumentSaveStatus> => {
+    if (!tab) return 'failed'
     if (tab.path) {
       const ok = await saveFile(tab.path, tab.content, tab.referenceDocxPath)
       if (ok) markTabSaved(tab.id)
-      return ok
+      return ok ? 'saved' : 'failed'
     }
     const meta = await saveAsMarkdown(tab.content, tab.name)
-    if (!meta) return false
+    if (!meta) return 'cancelled'
     markTabSaved(tab.id, meta.path, meta.name, meta.sourceType)
-    return true
+    return 'saved'
   }, [markTabSaved])
 
   const saveVisibleTab = useCallback(async (tab: VisibleTab) => {
@@ -192,7 +193,7 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
     if (activeDocument) {
       setSaving(true)
       try {
-        await saveDocumentTab(activeDocumentTab)
+        await exportDocumentMarkdown(activeDocumentTab)
       } finally { setSaving(false) }
       return
     }
@@ -203,7 +204,7 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
       const meta = await saveAsMarkdown(content, activeTab.name || 'untitled')
       if (meta) markTabSaved(activeTabId, meta.path, meta.name, meta.sourceType)
     } finally { setSaving(false) }
-  }, [activeDocument, activeDocumentTab, content, activeTab, activeTabId, markTabSaved, saveDocumentTab])
+  }, [activeDocument, activeDocumentTab, content, activeTab, activeTabId, markTabSaved, exportDocumentMarkdown])
 
   /** 导出 docx，模板和保存路径已由弹窗确定 */
   const handleExportDocxWithTemplate = useCallback(async (choice: TemplateChoice, outputPath: string) => {
@@ -332,6 +333,13 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
           <button className="px-2.5 py-1 rounded text-xs bg-transparent text-muted-foreground hover:text-foreground border border-border cursor-pointer" onClick={dismissExternalChange}>{t('editor.ignore')}</button>
         </div>
       )}
+      {documentContext.activeExternalChange && (
+        <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border-b border-amber-500/30 text-sm shrink-0">
+          <span className="flex-1 text-foreground">{t('editor.externalChange', { fileName: documentContext.activeExternalChange.name })}</span>
+          <button className="px-2.5 py-1 rounded text-xs bg-amber-500 text-white hover:bg-amber-600 border-none cursor-pointer" onClick={() => void documentContext.reloadExternalDocument(documentContext.activeExternalChange!.documentId)}>{t('editor.reload')}</button>
+          <button className="px-2.5 py-1 rounded text-xs bg-transparent text-muted-foreground hover:text-foreground border border-border cursor-pointer" onClick={() => documentContext.dismissExternalChange(documentContext.activeExternalChange!.documentId)}>{t('editor.ignore')}</button>
+        </div>
+      )}
       {documentContext.documentError && (
         <div className="flex items-center gap-2 px-4 py-2 bg-destructive/10 border-b border-destructive/30 text-sm shrink-0">
           <span className="flex-1 text-foreground">{t(documentContext.documentError.messageKey, documentContext.documentError.params)}</span>
@@ -348,8 +356,8 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
         <RecoveryPanel
           state={documentContext.recoveryState}
           onRetry={() => void documentContext.retryRecovery(documentContext.recoveryState!.documentId)}
-          onSaveAs={() => void saveDocumentTab(documentContext.tabs.find(tab => tab.documentId === documentContext.recoveryState!.documentId) ?? null)}
-          onRestore={() => documentContext.restoreRecovery(documentContext.recoveryState!.documentId)}
+          onSaveAs={() => void exportDocumentMarkdown(documentContext.tabs.find(tab => tab.documentId === documentContext.recoveryState!.documentId) ?? null)}
+          onRestore={() => void documentContext.restoreRecovery(documentContext.recoveryState!.documentId)}
           onDiscard={() => documentContext.discardRecovery(documentContext.recoveryState!.documentId)}
         />
       )}
@@ -453,7 +461,7 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
               return
             }
             const saved = await saveVisibleTab(target)
-            if (saved) {
+            if (saved === 'saved') {
               closeVisibleTab(target)
               setCloseConfirm(null)
             }

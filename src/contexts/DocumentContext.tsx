@@ -1,4 +1,7 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
+import { watch } from '@tauri-apps/plugin-fs'
 import type { DocumentModel } from '../services/document/model'
 import { resolveSaveTarget, type SaveTargetDecision } from '../services/document/save-strategy'
 import { DocumentService } from '../services/document/document-service'
@@ -6,6 +9,7 @@ import type { DocumentError } from '../services/document/errors'
 import type { OpenDocumentResult } from '../services/document/document-service'
 import { RecoveryService, type RecoveryState } from '../services/document/recovery-service'
 import { PackageSecurityPolicy, type RemoteResourceType } from '../services/security/PackageSecurityPolicy'
+import { createExternalChangeState, documentSourcePath, type DocumentExternalChangeState } from '../services/document/external-change-service'
 
 export interface DocumentTab {
   id: string
@@ -15,6 +19,7 @@ export interface DocumentTab {
 }
 
 type StoredDocumentTab = Omit<DocumentTab, 'isDirty'>
+export type DocumentSaveStatus = 'saved' | 'cancelled' | 'failed'
 
 interface DocumentContextValue {
   tabs: DocumentTab[]
@@ -24,6 +29,7 @@ interface DocumentContextValue {
   resourceSuggestion: OpenDocumentResult['resourceSuggestion'] | null
   documentError: DocumentError | null
   recoveryState: RecoveryState | null
+  activeExternalChange: DocumentExternalChangeState | null
   activeSecurityPolicy: PackageSecurityPolicy | null
   createNewDocument: () => void
   switchDocumentTab: (id: string) => void
@@ -31,12 +37,11 @@ interface DocumentContextValue {
   clearActiveDocument: () => void
   setActiveMarkdown: (markdown: string) => void
   getDocumentForTab: (id: string) => DocumentModel | null
-  markDocumentTabSavedAsMarkdown: (id: string, path: string) => void
-  markActiveDocumentSavedAsMarkdown: (path: string) => void
   openFileFromPath: (path: string, name: string) => Promise<void>
-  saveActiveDocument: () => Promise<void>
+  saveDocumentTab: (id: string) => Promise<DocumentSaveStatus>
+  saveActiveDocument: () => Promise<DocumentSaveStatus>
   retryRecovery: (documentId: string) => Promise<void>
-  restoreRecovery: (documentId: string) => void
+  restoreRecovery: (documentId: string) => Promise<void>
   discardRecovery: (documentId: string) => void
   exportActiveDocx: (outputPath: string, referenceDocx?: string) => Promise<void>
   trustActiveDocument: () => void
@@ -46,6 +51,8 @@ interface DocumentContextValue {
   dismissResourceSuggestion: () => void
   dismissDocumentError: () => void
   dismissRecoveryState: (documentId?: string) => void
+  reloadExternalDocument: (documentId: string) => Promise<void>
+  dismissExternalChange: (documentId: string) => void
 }
 
 const DocumentContext = createContext<DocumentContextValue | null>(null)
@@ -64,12 +71,17 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   const [documentError, setDocumentError] = useState<DocumentError | null>(null)
   const [recoveryStates, setRecoveryStates] = useState<Record<string, RecoveryState>>({})
   const [securityPolicies, setSecurityPolicies] = useState<Record<string, PackageSecurityPolicy>>({})
+  const [externalChanges, setExternalChanges] = useState<Record<string, DocumentExternalChangeState>>({})
   const documentService = useMemo(() => new DocumentService(), [])
   const recoveryService = useMemo(() => new RecoveryService(), [])
+  const selfSaveTimestamps = useRef(new Map<string, number>())
+  const documentsRef = useRef(documents)
+  documentsRef.current = documents
 
   const activeTab = tabs.find(tab => tab.id === activeTabId) || null
   const activeDocument = documents.find(document => document.id === activeTab?.documentId) || null
   const recoveryState = activeDocument ? recoveryStates[activeDocument.id] ?? null : null
+  const activeExternalChange = activeDocument ? externalChanges[activeDocument.id] ?? null : null
   const activeSecurityPolicy = activeDocument ? securityPolicies[activeDocument.id] ?? PackageSecurityPolicy.default() : null
   const activeSaveDecision = activeDocument ? resolveSaveTarget(activeDocument) : null
   const documentTabs = useMemo<DocumentTab[]>(() => tabs.map(tab => {
@@ -143,30 +155,15 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     return documents.find(document => document.id === tab?.documentId) || null
   }, [documents, tabs])
 
-  const markDocumentTabSavedAsMarkdown = useCallback((id: string, path: string) => {
-    const tab = tabs.find(tab => tab.id === id)
-    if (!tab) return
-
-    setDocuments(previous => previous.map(document => document.id === tab.documentId
-      ? {
-          ...document,
-          source: { type: 'markdown', path },
-          dirty: { ...document.dirty, markdown: false },
-        }
-      : document
-    ))
-  }, [tabs])
-
-  const markActiveDocumentSavedAsMarkdown = useCallback((path: string) => {
-    if (!activeTabId) return
-    markDocumentTabSavedAsMarkdown(activeTabId, path)
-  }, [activeTabId, markDocumentTabSavedAsMarkdown])
-
   const openFileFromPath = useCallback(async (path: string, name: string) => {
     const existing = documents.find(document => (document.source.type === 'markdown' && document.source.path === path) || (document.source.type === 'package' && document.source.packagePath === path) || (document.source.type === 'docx' && document.source.originalPath === path))
     if (existing) {
       const tab = tabs.find(candidate => candidate.documentId === existing.id)
-      if (tab) setActiveTabId(tab.id)
+      if (tab) {
+        setActiveTabId(tab.id)
+        window.dispatchEvent(new CustomEvent('mark-doc:document-opened', { detail: path }))
+        window.dispatchEvent(new CustomEvent('mark-doc:file-opened', { detail: path }))
+      }
       return
     }
     const opened = await documentService.openPath(path)
@@ -179,10 +176,63 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     setTabs(previous => [...previous, tab])
     setActiveTabId(tab.id)
     setResourceSuggestion(opened.value.resourceSuggestion ?? null)
+    window.dispatchEvent(new CustomEvent('mark-doc:document-opened', { detail: path }))
+    window.dispatchEvent(new CustomEvent('mark-doc:file-opened', { detail: path }))
   }, [documentService, documents, tabs])
 
+  const openFileFromPathRef = useRef(openFileFromPath)
+  openFileFromPathRef.current = openFileFromPath
+  useEffect(() => {
+    Promise.resolve(invoke<string[]>('take_pending_files')).then(paths => {
+      if (!paths) return
+      for (const path of paths) {
+        void openFileFromPathRef.current(path, path.replace(/\\/g, '/').split('/').pop() || 'untitled')
+      }
+    }).catch(() => {})
+
+    const unlisten = listen<string[]>('open-files', event => {
+      for (const path of event.payload) {
+        void openFileFromPathRef.current(path, path.replace(/\\/g, '/').split('/').pop() || 'untitled')
+      }
+    })
+    return () => { void unlisten.then(dispose => dispose()) }
+  }, [])
+
+  const watchedDocumentPaths = documents
+    .map(document => `${document.id}:${documentSourcePath(document) ?? ''}`)
+    .join('|')
+  useEffect(() => {
+    let cancelled = false
+    const unwatchers: Array<() => void> = []
+    const start = async () => {
+      for (const snapshot of documentsRef.current) {
+        const path = documentSourcePath(snapshot)
+        if (!path) continue
+        try {
+          const unwatch = await watch(path, () => {
+            const saveTime = selfSaveTimestamps.current.get(path)
+            if (saveTime && Date.now() - saveTime < 2000) return
+            const current = documentsRef.current.find(document => document.id === snapshot.id)
+            if (!current) return
+            const state = createExternalChangeState(current)
+            if (state) setExternalChanges(previous => ({ ...previous, [current.id]: state }))
+          }, { delayMs: 500 })
+          if (cancelled) unwatch()
+          else unwatchers.push(unwatch)
+        } catch {
+          // Watching is best-effort; open and save behavior remains available.
+        }
+      }
+    }
+    void start()
+    return () => {
+      cancelled = true
+      unwatchers.forEach(unwatch => unwatch())
+    }
+  }, [watchedDocumentPaths])
+
   const clearRecovery = useCallback((documentId: string) => {
-    recoveryService.clear(documentId)
+    void recoveryService.clear(documentId)
     setRecoveryStates(previous => {
       const remaining = { ...previous }
       delete remaining[documentId]
@@ -190,39 +240,54 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     })
   }, [recoveryService])
 
-  const saveDocument = useCallback(async (documentId: string) => {
+  const saveDocument = useCallback(async (documentId: string): Promise<DocumentSaveStatus> => {
     const document = documents.find(candidate => candidate.id === documentId)
-    if (!document) return
+    if (!document) return 'failed'
     const saved = await documentService.saveDocument(document)
     if (!saved.ok) {
       setDocumentError(saved.error)
       if (saved.error.code === 'save.failed') {
-        const recovery = recoveryService.recordSaveFailure(document.id, {
-          draftPath: document.workspace.entryPath,
-          markdown: document.markdown,
-          originalUnchanged: true,
-          reason: 'unknown',
-        })
-        setRecoveryStates(previous => ({ ...previous, [document.id]: recovery }))
+        try {
+          const recovery = await recoveryService.persistSaveFailure(document.id, {
+            markdown: document.markdown,
+            originalUnchanged: document.source.type !== 'markdown' && document.source.type !== 'directory',
+            reason: 'unknown',
+          })
+          setRecoveryStates(previous => ({ ...previous, [document.id]: recovery }))
+        } catch {
+          // The save error remains visible; do not claim a persisted draft when writing it failed.
+        }
       }
-      return
+      return 'failed'
     }
-    if (!saved.value) return
+    if (!saved.value) return 'cancelled'
     clearRecovery(document.id)
     setDocuments(previous => previous.map(candidate => candidate.id === document.id ? saved.value! : candidate))
     const path = saved.value.source.type === 'markdown' ? saved.value.source.path
       : saved.value.source.type === 'package' ? saved.value.source.packagePath
         : null
     if (path) {
+      selfSaveTimestamps.current.set(path, Date.now())
       setTabs(previous => previous.map(tab => tab.documentId === document.id
         ? { ...tab, name: path.split('/').pop() || tab.name }
         : tab
       ))
     }
+    setExternalChanges(previous => {
+      const remaining = { ...previous }
+      delete remaining[document.id]
+      return remaining
+    })
+    return 'saved'
   }, [clearRecovery, documentService, documents, recoveryService])
 
-  const saveActiveDocument = useCallback(async () => {
-    if (activeDocument) await saveDocument(activeDocument.id)
+  const saveDocumentTab = useCallback(async (id: string) => {
+    const tab = tabs.find(candidate => candidate.id === id)
+    return tab ? saveDocument(tab.documentId) : Promise.resolve<DocumentSaveStatus>('failed')
+  }, [saveDocument, tabs])
+
+  const saveActiveDocument = useCallback(async (): Promise<DocumentSaveStatus> => {
+    return activeDocument ? saveDocument(activeDocument.id) : 'failed'
   }, [activeDocument, saveDocument])
 
   const retryRecovery = useCallback(async (documentId: string) => {
@@ -233,11 +298,13 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     clearRecovery(documentId)
   }, [clearRecovery])
 
-  const restoreRecovery = useCallback((documentId: string) => {
+  const restoreRecovery = useCallback(async (documentId: string) => {
     const recovery = recoveryStates[documentId] ?? recoveryService.get(documentId)
     if (!recovery) return
+    const markdown = await recoveryService.restoreDraft(documentId)
+    if (markdown === null) return
     setDocuments(previous => previous.map(document => document.id === documentId
-      ? { ...document, markdown: recovery.markdown, dirty: { ...document.dirty, markdown: true } }
+      ? { ...document, markdown, dirty: { ...document.dirty, markdown: true } }
       : document
     ))
     clearRecovery(documentId)
@@ -248,6 +315,28 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     const exported = await documentService.exportDocx(activeDocument, outputPath, referenceDocx)
     if (!exported.ok) setDocumentError(exported.error)
   }, [activeDocument, documentService])
+
+  const dismissExternalChange = useCallback((documentId: string) => {
+    setExternalChanges(previous => {
+      const remaining = { ...previous }
+      delete remaining[documentId]
+      return remaining
+    })
+  }, [])
+
+  const reloadExternalDocument = useCallback(async (documentId: string) => {
+    const state = externalChanges[documentId]
+    if (!state) return
+    const opened = await documentService.openPath(state.path)
+    if (!opened.ok) {
+      setDocumentError(opened.error)
+      return
+    }
+    const reloaded = { ...opened.value.document, id: documentId }
+    setDocuments(previous => previous.map(document => document.id === documentId ? reloaded : document))
+    setResourceSuggestion(opened.value.resourceSuggestion ?? null)
+    dismissExternalChange(documentId)
+  }, [dismissExternalChange, documentService, externalChanges])
 
   const dismissResourceSuggestion = useCallback(() => setResourceSuggestion(null), [])
   const dismissDocumentError = useCallback(() => setDocumentError(null), [])
@@ -277,6 +366,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     resourceSuggestion,
     documentError,
     recoveryState,
+    activeExternalChange,
     activeSecurityPolicy,
     createNewDocument,
     switchDocumentTab,
@@ -284,9 +374,8 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     clearActiveDocument,
     setActiveMarkdown,
     getDocumentForTab,
-    markDocumentTabSavedAsMarkdown,
-    markActiveDocumentSavedAsMarkdown,
     openFileFromPath,
+    saveDocumentTab,
     saveActiveDocument,
     retryRecovery,
     restoreRecovery,
@@ -299,6 +388,8 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     dismissResourceSuggestion,
     dismissDocumentError,
     dismissRecoveryState,
+    reloadExternalDocument,
+    dismissExternalChange,
   }), [
     documentTabs,
     activeTabId,
@@ -307,6 +398,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     resourceSuggestion,
     documentError,
     recoveryState,
+    activeExternalChange,
     activeSecurityPolicy,
     createNewDocument,
     switchDocumentTab,
@@ -314,9 +406,8 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     clearActiveDocument,
     setActiveMarkdown,
     getDocumentForTab,
-    markDocumentTabSavedAsMarkdown,
-    markActiveDocumentSavedAsMarkdown,
     openFileFromPath,
+    saveDocumentTab,
     saveActiveDocument,
     retryRecovery,
     restoreRecovery,
@@ -329,6 +420,8 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     dismissResourceSuggestion,
     dismissDocumentError,
     dismissRecoveryState,
+    reloadExternalDocument,
+    dismissExternalChange,
   ])
 
   return <DocumentContext.Provider value={value}>{children}</DocumentContext.Provider>

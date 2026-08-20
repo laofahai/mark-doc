@@ -3,6 +3,8 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { readDir, watch } from '@tauri-apps/plugin-fs'
 import { useTranslation } from 'react-i18next'
 import { useFile } from '../contexts/FileContext'
+import { useDocument } from '../contexts/DocumentContext'
+import { documentSourcePath } from '../services/document/external-change-service'
 import {
   FolderOpen,
   FolderClosed,
@@ -28,7 +30,9 @@ const LAST_FOLDER_KEY = 'mark-doc-last-folder'
 
 export function Sidebar({ onFolderStateChange }: SidebarProps) {
   const { t } = useTranslation()
-  const { activeTab, openFileFromPath } = useFile()
+  const { activeTab } = useFile()
+  const documentContext = useDocument()
+  const activeDocumentPath = documentContext.activeDocument ? documentSourcePath(documentContext.activeDocument) : null
   const [currentFolder, setCurrentFolder] = useState<string | null>(null)
   const [folderTree, setFolderTree] = useState<FileNode[]>([])
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
@@ -52,7 +56,7 @@ export function Sidebar({ onFolderStateChange }: SidebarProps) {
       if (entry.name.startsWith('.')) continue
       if (entry.isDirectory) {
         nodes.push({ name: entry.name, path: `${path}/${entry.name}`, type: 'folder', children: [] })
-      } else if (entry.name.endsWith('.md') || entry.name.endsWith('.docx')) {
+      } else if (entry.name.endsWith('.md') || entry.name.endsWith('.mdoc') || entry.name.endsWith('.docx')) {
         nodes.push({ name: entry.name, path: `${path}/${entry.name}`, type: 'file' })
       }
     }
@@ -174,7 +178,7 @@ export function Sidebar({ onFolderStateChange }: SidebarProps) {
   }
 
   const renderTree = (nodes: FileNode[], level = 0) => {
-    const isActive = (path: string) => activeTab?.path === path
+    const isActive = (path: string) => activeDocumentPath === path || activeTab?.path === path
     return nodes.map(node => (
       <div key={node.path}>
         <div
@@ -182,7 +186,7 @@ export function Sidebar({ onFolderStateChange }: SidebarProps) {
             isActive(node.path) ? 'bg-accent text-accent-foreground font-medium' : 'text-foreground/80 hover:bg-accent/50'
           }`}
           style={{ paddingLeft: `${level * 14 + 4}px` }}
-          onClick={() => node.type === 'folder' ? toggleFolder(node) : openFileFromPath(node.path, node.name)}
+          onClick={() => node.type === 'folder' ? toggleFolder(node) : void documentContext.openFileFromPath(node.path, node.name)}
         >
           <span className={`flex items-center gap-px mr-1.5 shrink-0 ${isActive(node.path) ? 'text-accent-foreground' : 'text-muted-foreground'}`}>
             {node.type === 'folder' ? (

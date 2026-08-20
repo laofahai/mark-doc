@@ -2,7 +2,6 @@ import { createContext, useContext, useState, useCallback, useEffect, useRef, ty
 import { readTextFile, watch } from '@tauri-apps/plugin-fs'
 import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
 
 export interface FileTab {
   id: string
@@ -203,6 +202,12 @@ export function FileProvider({ children }: { children: ReactNode }) {
     setActiveTabId(null)
   }, [])
 
+  useEffect(() => {
+    const handler = () => setActiveTabId(null)
+    window.addEventListener('mark-doc:document-opened', handler)
+    return () => window.removeEventListener('mark-doc:document-opened', handler)
+  }, [])
+
   const reloadTab = useCallback(async (tabId: string) => {
     const tab = tabs.find(t => t.id === tabId)
     if (!tab || !tab.path) return
@@ -240,28 +245,6 @@ export function FileProvider({ children }: { children: ReactNode }) {
 
     return () => { unwatchers.forEach(fn => fn()) }
   }, [tabs.map(t => t.path).join('|')])
-
-  // 监听系统文件关联打开事件
-  const openFileFromPathRef = useRef(openFileFromPath)
-  openFileFromPathRef.current = openFileFromPath
-  useEffect(() => {
-    // 查询冷启动时缓存的文件路径
-    invoke<string[]>('take_pending_files').then((paths) => {
-      for (const path of paths) {
-        const name = path.split('/').pop() || 'untitled'
-        openFileFromPathRef.current(path, name)
-      }
-    }).catch(() => {})
-
-    // 监听后续的文件打开事件（应用已运行时）
-    const unlisten = listen<string[]>('open-files', (event) => {
-      for (const path of event.payload) {
-        const name = path.split('/').pop() || 'untitled'
-        openFileFromPathRef.current(path, name)
-      }
-    })
-    return () => { unlisten.then(fn => fn()) }
-  }, [])
 
   const openFileDialog = useCallback(async () => {
     // 默认打开当前文件所在目录

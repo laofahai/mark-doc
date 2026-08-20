@@ -46,6 +46,26 @@ describe('DOCX importer/exporter', () => {
     expect(result).toMatchObject({ ok: true, value: { markdown: '# Imported DOCX' } })
   })
 
+  it('registers local assets referenced by imported DOCX markdown', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce({
+      workspace_root: '/tmp/markdoc/doc-assets',
+      markdown_path: '/tmp/markdoc/doc-assets/document.md',
+      assets_path: '/tmp/markdoc/doc-assets/assets',
+    })
+    vi.mocked(readTextFile).mockResolvedValueOnce([
+      '![diagram](assets/diagram.png)',
+      '<img src="assets/photo.jpg">',
+      '![remote](https://example.com/remote.png)',
+    ].join('\n'))
+
+    const result = await new DocxImporter().import('/docs/report.docx', '/tmp/markdoc/doc-assets')
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { assets: { references: ['assets/diagram.png', 'assets/photo.jpg'] } },
+    })
+  })
+
   it('returns the docx import error contract when the command rejects', async () => {
     vi.mocked(invoke).mockRejectedValueOnce(new Error('import failed'))
     const result = await new DocxImporter().import('/docs/report.docx', '/tmp/markdoc/doc-1')

@@ -9,6 +9,7 @@ import { EditorToolbarOverlay, type EditorToolbarActions } from './EditorToolbar
 import { VditorEditorAdapter } from './VditorEditorAdapter'
 import type { DocumentEditorAdapter, EditorLocaleConfig } from './editor-adapter'
 import type { PackageSecurityPolicy } from '../../services/security/PackageSecurityPolicy'
+import { enforceRemoteResourcePolicy, getCanonicalEditorMarkdown, installRemoteResourceRenderBoundary, observeRemoteResourcePolicy, sanitizeRenderedHtml } from './resource-policy'
 
 const PRESET_COLORS = [
   '#FF0000', '#FF4500', '#FF8C00', '#FFD700', '#FFFF00',
@@ -32,13 +33,6 @@ export function resolveEditorLanguage(locale: EditorLocaleConfig | undefined, i1
   return locale?.editorLanguage ?? (i18nLanguage === 'en' ? 'en_US' : 'zh_CN')
 }
 
-export function filterRemoteMarkdownImages(markdown: string, securityPolicy: PackageSecurityPolicy | null | undefined) {
-  if (!securityPolicy) return markdown
-  return markdown.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s)]+)(?:\s+[^)]*)?\)/gi, (match, alt, url) =>
-    securityPolicy.canLoadRemote(url, 'image') ? match : alt
-  )
-}
-
 const Editor = ({ content = '', onChange, onAdapterReady, locale, zoom = 100, actions, securityPolicy }: EditorProps) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const vditorRef = useRef<Vditor | null>(null)
@@ -47,26 +41,36 @@ const Editor = ({ content = '', onChange, onAdapterReady, locale, zoom = 100, ac
   const onAdapterReadyRef = useRef(onAdapterReady)
   onAdapterReadyRef.current = onAdapterReady
   const contentRef = useRef(content)
+  const securityPolicyRef = useRef(securityPolicy)
+  securityPolicyRef.current = securityPolicy
+  const renderedPolicyRef = useRef(securityPolicy)
   const savedRangeRef = useRef<Range | null>(null)
   const { theme } = useTheme()
   const { t: tr, i18n } = useTranslation()
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null)
   const editorLanguage = resolveEditorLanguage(locale, i18n.language)
-  const renderedContent = filterRemoteMarkdownImages(content, securityPolicy)
 
   // Keep contentRef updated so theme switch preserves current edits
   useEffect(() => {
     if (vditorRef.current) {
-      contentRef.current = vditorRef.current.getValue()
+      contentRef.current = getCanonicalEditorMarkdown(vditorRef.current)
     }
   })
 
   useEffect(() => {
-    contentRef.current = renderedContent
-    if (vditorRef.current && vditorRef.current.getValue() !== renderedContent) {
-      vditorRef.current.setValue(renderedContent)
+    contentRef.current = content
+    const policyChanged = renderedPolicyRef.current !== securityPolicy
+    renderedPolicyRef.current = securityPolicy
+    if (vditorRef.current && (getCanonicalEditorMarkdown(vditorRef.current) !== content || policyChanged)) {
+      vditorRef.current.setValue(content)
+      if (containerRef.current) enforceRemoteResourcePolicy(containerRef.current, securityPolicy)
     }
-  }, [renderedContent])
+  }, [content, securityPolicy])
+
+  useEffect(() => {
+    if (!containerRef.current) return
+    return observeRemoteResourcePolicy(containerRef.current, () => securityPolicyRef.current)
+  }, [])
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -228,7 +232,7 @@ const Editor = ({ content = '', onChange, onAdapterReady, locale, zoom = 100, ac
     ]
 
     const vd = new Vditor(containerRef.current, {
-      value: contentRef.current,
+      value: '',
       mode: 'wysiwyg',
       theme: isDark ? 'dark' : 'classic',
       lang: editorLanguage,
@@ -242,14 +246,23 @@ const Editor = ({ content = '', onChange, onAdapterReady, locale, zoom = 100, ac
       preview: {
         theme: { current: isDark ? 'dark' : 'light' },
         markdown: { toc: true, autoSpace: true, mark: true, codeBlockPreview: true, mathBlockPreview: true },
+        transform: html => sanitizeRenderedHtml(html, securityPolicyRef.current),
         math: { engine: 'KaTeX' },
         hljs: { lineNumber: true, style: isDark ? 'native' : 'github' },
       },
       customWysiwygToolbar: () => {},
-      input: (value) => { onChangeRef.current?.(value) },
+      input: () => { onChangeRef.current?.(getCanonicalEditorMarkdown(vd)) },
       after: () => {
         vditorRef.current = vd
-        onAdapterReadyRef.current?.(new VditorEditorAdapter(vd))
+        installRemoteResourceRenderBoundary(vd, () => securityPolicyRef.current)
+        vd.setValue(contentRef.current)
+        if (containerRef.current) enforceRemoteResourcePolicy(containerRef.current, securityPolicyRef.current)
+        onAdapterReadyRef.current?.(new VditorEditorAdapter({
+          getValue: () => getCanonicalEditorMarkdown(vd),
+          setValue: value => vd.setValue(value),
+          focus: () => vd.focus(),
+          insertValue: value => vd.insertValue(value),
+        }))
         vd.focus()
         // Inject a mount point into the Vditor toolbar for our custom buttons
         const toolbarEl = containerRef.current?.querySelector('.vditor-toolbar')
@@ -265,7 +278,7 @@ const Editor = ({ content = '', onChange, onAdapterReady, locale, zoom = 100, ac
     return () => {
       setPortalTarget(null)
       if (vditorRef.current) {
-        contentRef.current = vditorRef.current.getValue()
+        contentRef.current = getCanonicalEditorMarkdown(vditorRef.current)
         vditorRef.current.destroy()
         vditorRef.current = null
       }

@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { mkdir, readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
+import { describe, expect, it, vi } from 'vitest'
 import type { DocumentModel } from '../model'
 import { DocumentSessionStore } from '../session-store'
 import { RecoveryService } from '../recovery-service'
@@ -58,21 +59,35 @@ describe('document session and save strategy', () => {
     })
   })
 
-  it('records recovery states that preserve content before hiding failures', () => {
+  it('persists and restores recovery content from a dedicated draft', async () => {
     const recovery = new RecoveryService()
-    const state = recovery.recordSaveFailure('doc-1', {
-      draftPath: '/tmp/recovery/doc-1/document.md',
+    const state = await recovery.persistSaveFailure('doc-1', {
       markdown: '# Preserved draft',
       originalUnchanged: true,
       reason: 'cloud-lock',
     })
+
+    expect(state.draftPath).toBe('/tmp/markdoc/recovery/doc-1.md')
+    expect(mkdir).toHaveBeenCalledWith('/tmp/markdoc/recovery', { recursive: true })
+    expect(writeTextFile).toHaveBeenCalledWith(state.draftPath, '# Preserved draft')
+    vi.mocked(readTextFile).mockResolvedValueOnce('# Draft from disk')
     expect(state.priority).toEqual(['content-preserved', 'original-unchanged', 'user-visible'])
-    expect(recovery.get('doc-1')?.markdown).toBe('# Preserved draft')
+    await expect(recovery.restoreDraft('doc-1')).resolves.toBe('# Draft from disk')
   })
 
   it('stores sessions by document id', () => {
     const store = new DocumentSessionStore()
     store.add(model({ type: 'new' }))
     expect(store.get('doc-1')?.document.markdown).toBe('# Hello')
+  })
+
+  it('initializes dirty documents with a dirty save state', () => {
+    const store = new DocumentSessionStore()
+    const dirty = model({ type: 'new' })
+    dirty.dirty.assets = true
+
+    store.add(dirty)
+
+    expect(store.get('doc-1')?.saveState).toBe('dirty')
   })
 })

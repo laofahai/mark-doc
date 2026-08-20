@@ -7,6 +7,8 @@ export interface PackageExportOptions {
   entry: string
   files: string[]
   manifest?: object
+  sourcePackagePath?: string
+  preservedFiles?: string[]
 }
 
 export interface PackageExportResult {
@@ -27,6 +29,8 @@ export class PackageExporter {
           entry: options.entry,
           files: options.files,
           ...(options.manifest && { manifest: options.manifest }),
+          ...(options.sourcePackagePath && { sourcePackagePath: options.sourcePackagePath }),
+          ...(options.preservedFiles?.length && { preservedFiles: options.preservedFiles }),
         },
       })
       return ok(result)
