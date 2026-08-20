@@ -8,6 +8,7 @@ import { toolbarIcons } from './toolbar-icons'
 import { EditorToolbarOverlay, type EditorToolbarActions } from './EditorToolbarOverlay'
 import { VditorEditorAdapter } from './VditorEditorAdapter'
 import type { DocumentEditorAdapter, EditorLocaleConfig } from './editor-adapter'
+import type { PackageSecurityPolicy } from '../../services/security/PackageSecurityPolicy'
 
 const PRESET_COLORS = [
   '#FF0000', '#FF4500', '#FF8C00', '#FFD700', '#FFFF00',
@@ -24,13 +25,21 @@ interface EditorProps {
   locale?: EditorLocaleConfig
   zoom?: number
   actions?: EditorToolbarActions
+  securityPolicy?: PackageSecurityPolicy | null
 }
 
 export function resolveEditorLanguage(locale: EditorLocaleConfig | undefined, i18nLanguage: string): EditorLocaleConfig['editorLanguage'] {
   return locale?.editorLanguage ?? (i18nLanguage === 'en' ? 'en_US' : 'zh_CN')
 }
 
-const Editor = ({ content = '', onChange, onAdapterReady, locale, zoom = 100, actions }: EditorProps) => {
+export function filterRemoteMarkdownImages(markdown: string, securityPolicy: PackageSecurityPolicy | null | undefined) {
+  if (!securityPolicy) return markdown
+  return markdown.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s)]+)(?:\s+[^)]*)?\)/gi, (match, alt, url) =>
+    securityPolicy.canLoadRemote(url, 'image') ? match : alt
+  )
+}
+
+const Editor = ({ content = '', onChange, onAdapterReady, locale, zoom = 100, actions, securityPolicy }: EditorProps) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const vditorRef = useRef<Vditor | null>(null)
   const onChangeRef = useRef(onChange)
@@ -43,6 +52,7 @@ const Editor = ({ content = '', onChange, onAdapterReady, locale, zoom = 100, ac
   const { t: tr, i18n } = useTranslation()
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null)
   const editorLanguage = resolveEditorLanguage(locale, i18n.language)
+  const renderedContent = filterRemoteMarkdownImages(content, securityPolicy)
 
   // Keep contentRef updated so theme switch preserves current edits
   useEffect(() => {
@@ -50,6 +60,13 @@ const Editor = ({ content = '', onChange, onAdapterReady, locale, zoom = 100, ac
       contentRef.current = vditorRef.current.getValue()
     }
   })
+
+  useEffect(() => {
+    contentRef.current = renderedContent
+    if (vditorRef.current && vditorRef.current.getValue() !== renderedContent) {
+      vditorRef.current.setValue(renderedContent)
+    }
+  }, [renderedContent])
 
   useEffect(() => {
     if (!containerRef.current) return

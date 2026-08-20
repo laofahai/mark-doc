@@ -8,17 +8,31 @@ vi.mock('react-i18next', () => ({
 }))
 
 describe('recovery and security panels', () => {
-  it('renders recovery actions without localized literals in component assertions', () => {
+  it('renders and invokes recovery actions without localized literals in component assertions', () => {
+    const onRetry = vi.fn()
+    const onSaveAs = vi.fn()
+    const onRestore = vi.fn()
+    const onDiscard = vi.fn()
     render(<RecoveryPanel state={{
       documentId: 'doc-1',
       draftPath: '/tmp/recovery/doc-1/document.md',
+      markdown: '# Recovery draft',
       originalUnchanged: true,
       reason: 'cloud-lock',
       priority: ['content-preserved', 'original-unchanged', 'user-visible'],
-    }} onRetry={vi.fn()} onSaveAs={vi.fn()} onRestore={vi.fn()} onDiscard={vi.fn()} />)
+    }} onRetry={onRetry} onSaveAs={onSaveAs} onRestore={onRestore} onDiscard={onDiscard} />)
 
     expect(screen.getByText('recovery.retrySave')).toBeInTheDocument()
     expect(screen.getByText('recovery.restoreDraft')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('recovery.retrySave'))
+    fireEvent.click(screen.getByText('recovery.saveAs'))
+    fireEvent.click(screen.getByText('recovery.restoreDraft'))
+    fireEvent.click(screen.getByText('recovery.discardDraft'))
+
+    expect(onRetry).toHaveBeenCalledOnce()
+    expect(onSaveAs).toHaveBeenCalledOnce()
+    expect(onRestore).toHaveBeenCalledOnce()
+    expect(onDiscard).toHaveBeenCalledOnce()
   })
 
   it('renders quarantined package resources and trust controls', () => {

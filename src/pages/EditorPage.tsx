@@ -393,6 +393,7 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
                 onChange={handleContentChange}
                 zoom={zoom}
                 actions={editorActions}
+                securityPolicy={activeDocument ? documentContext.activeSecurityPolicy : undefined}
               />
             </div>
           </>

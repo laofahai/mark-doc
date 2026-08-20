@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import { resolveEditorLanguage } from '../Editor'
+import { filterRemoteMarkdownImages, resolveEditorLanguage } from '../Editor'
 import { VditorEditorAdapter } from '../VditorEditorAdapter'
+import { PackageSecurityPolicy } from '../../../services/security/PackageSecurityPolicy'
 
 describe('VditorEditorAdapter', () => {
   it('gets and sets markdown without exposing Vditor to document services', () => {
@@ -86,5 +87,20 @@ describe('resolveEditorLanguage', () => {
   it('falls back to the current i18n language when no editor override is supplied', () => {
     expect(resolveEditorLanguage(undefined, 'en')).toBe('en_US')
     expect(resolveEditorLanguage(undefined, 'zh')).toBe('zh_CN')
+  })
+})
+
+describe('filterRemoteMarkdownImages', () => {
+  it('removes untrusted remote markdown images while preserving local images', () => {
+    const markdown = '![remote](https://images.example.com/diagram.png)\n![local](assets/diagram.png)'
+
+    expect(filterRemoteMarkdownImages(markdown, PackageSecurityPolicy.default())).toBe('remote\n![local](assets/diagram.png)')
+  })
+
+  it('passes remote markdown images after the policy allows images', () => {
+    const markdown = '![remote](https://images.example.com/diagram.png)'
+    const policy = PackageSecurityPolicy.default().allowResourceType('image')
+
+    expect(filterRemoteMarkdownImages(markdown, policy)).toBe(markdown)
   })
 })
