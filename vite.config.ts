@@ -10,11 +10,13 @@ export default defineConfig({
   },
   server: {
     port: 1420,
-    strictPort: false,
+    strictPort: true,
     host: 'localhost',
+    watch: {
+      ignored: ['**/coverage/**', '**/dist/**'],
+    },
   },
   optimizeDeps: {
-    include: ['use-sync-external-store/shim'],
     exclude: ['@tauri-apps/plugin-fs', '@tauri-apps/plugin-dialog'],
   },
 })

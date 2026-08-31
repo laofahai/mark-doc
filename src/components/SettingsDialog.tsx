@@ -4,9 +4,11 @@ import {
   ThemeSwitcher, LanguageSwitcher,
   Button, Label, Separator,
 } from '@linch-tech/desktop-core'
-import { open } from '@tauri-apps/plugin-dialog'
 import { useTranslation } from 'react-i18next'
 import { FileText, Upload, Check, Trash2 } from 'lucide-react'
+import { selectDocumentFile } from '../services/native-file'
+import { SettingsUpdateSection } from './SettingsUpdateSection'
+import { useDocument } from '../contexts/DocumentContext'
 
 type TemplateId = 'default' | 'custom'
 
@@ -17,6 +19,7 @@ interface Props {
 
 export function SettingsDialog({ open: isOpen, onOpenChange }: Props) {
   const { t } = useTranslation()
+  const documentContext = useDocument()
   const [tab, setTab] = useState<'general' | 'template'>('general')
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateId>('default')
   const [customTemplatePath, setCustomTemplatePath] = useState<string | null>(null)
@@ -36,8 +39,8 @@ export function SettingsDialog({ open: isOpen, onOpenChange }: Props) {
   }, [])
 
   const handleUploadCustom = useCallback(async () => {
-    const filePath = await open({
-      filters: [{ name: 'Word Template', extensions: ['docx'] }],
+    const filePath = await selectDocumentFile({
+      filters: [{ name: t('fileFilters.wordTemplate'), extensions: ['docx'] }],
     })
     if (filePath) {
       const path = filePath as string
@@ -48,7 +51,7 @@ export function SettingsDialog({ open: isOpen, onOpenChange }: Props) {
       localStorage.setItem('docx_template_custom_path', path)
       localStorage.setItem('docx_template_custom_name', name)
     }
-  }, [])
+  }, [t])
 
   const handleClearCustom = useCallback(() => {
     setCustomTemplatePath(null)
@@ -95,6 +98,7 @@ export function SettingsDialog({ open: isOpen, onOpenChange }: Props) {
                 <Label className="text-sm font-medium">{t('common.theme')}</Label>
                 <ThemeSwitcher variant="full" size="sm" />
               </div>
+              <SettingsUpdateSection hasUnsavedDocuments={documentContext.tabs.some(tab => tab.isDirty)} />
             </div>
           )}
 

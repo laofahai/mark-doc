@@ -30,12 +30,50 @@ fn normalize_imported_media_paths(
     )
     .expect("valid Markdown link pattern");
 
-    link_pattern
+    let normalized_markdown_links = link_pattern
         .replace_all(markdown, |captures: &regex::Captures| {
             let destination = &captures["destination"];
             format!(
                 "{}{}{}",
                 &captures["prefix"],
+                normalize_imported_media_destination(
+                    destination,
+                    workspace_root,
+                    media_root,
+                    assets_root,
+                    relocated_media,
+                ),
+                &captures["suffix"]
+            )
+        })
+        .into_owned();
+    normalize_imported_media_html_attributes(
+        &normalized_markdown_links,
+        workspace_root,
+        media_root,
+        assets_root,
+        relocated_media,
+    )
+}
+
+fn normalize_imported_media_html_attributes(
+    markdown: &str,
+    workspace_root: &Path,
+    media_root: &Path,
+    assets_root: &Path,
+    relocated_media: &BTreeMap<PathBuf, PathBuf>,
+) -> String {
+    let attribute_pattern =
+        regex::Regex::new(r#"(?P<prefix>\b(?:src|href|poster)\s*=\s*)(?P<quote>["'])(?P<destination>[^"']+)(?P<suffix>["'])"#)
+            .expect("valid HTML resource attribute pattern");
+
+    attribute_pattern
+        .replace_all(markdown, |captures: &regex::Captures| {
+            let destination = &captures["destination"];
+            format!(
+                "{}{}{}{}",
+                &captures["prefix"],
+                &captures["quote"],
                 normalize_imported_media_destination(
                     destination,
                     workspace_root,
@@ -344,7 +382,6 @@ fn collision_safe_name(file_name: &OsStr, collision_index: u64) -> OsString {
     candidate
 }
 
-#[tauri::command]
 pub fn import_docx_to_workspace(
     input_path: String,
     workspace_root: String,
@@ -482,6 +519,28 @@ mod tests {
     }
 
     #[test]
+    fn normalizes_raw_html_image_paths_inside_the_staging_media_directory() {
+        let workspace_root = Path::new("/tmp/workspace");
+        let staging_root = workspace_root.join(".markdoc-docx-import-media-1-1");
+        let assets_root = workspace_root.join("assets");
+        let markdown = format!(
+            r#"<img src="{}" style="width:6.98333in;height:8.08194in" />"#,
+            staging_root.join("media/image1.png").display()
+        );
+
+        assert_eq!(
+            normalize_imported_media_paths(
+                &markdown,
+                workspace_root,
+                &staging_root,
+                &assets_root,
+                &BTreeMap::new(),
+            ),
+            r#"<img src="assets/media/image1.png" style="width:6.98333in;height:8.08194in" />"#
+        );
+    }
+
+    #[test]
     fn preserves_existing_workspace_asset_and_external_links() {
         let workspace_root = Path::new("/tmp/workspace");
         let assets_root = workspace_root.join("assets");
@@ -574,6 +633,35 @@ mod tests {
         let markdown = fs::read_to_string(&result.markdown_path).unwrap();
         assert_eq!(markdown, "![Chart](assets/media/chart.png)");
         assert!(workspace_root.join("assets/media/chart.png").exists());
+    }
+
+    #[test]
+    fn import_pipeline_writes_resolvable_html_image_links_from_runner_output() {
+        let directory = tempfile::tempdir().unwrap();
+        let workspace_root = directory.path();
+
+        let result = import_docx_to_workspace_with_runner(
+            "input.docx",
+            workspace_root.to_string_lossy().into_owned(),
+            |args| {
+                let staging_root = PathBuf::from(extract_media_root(args));
+                fs::create_dir_all(staging_root.join("media")).unwrap();
+                fs::write(staging_root.join("media/image1.png"), "image data").unwrap();
+                Ok(format!(
+                    r#"<img src="{}" style="width:6.98333in;height:8.08194in" />"#,
+                    staging_root.join("media/image1.png").display()
+                )
+                .into_bytes())
+            },
+        )
+        .unwrap();
+
+        let markdown = fs::read_to_string(&result.markdown_path).unwrap();
+        assert_eq!(
+            markdown,
+            r#"<img src="assets/media/image1.png" style="width:6.98333in;height:8.08194in" />"#
+        );
+        assert!(workspace_root.join("assets/media/image1.png").exists());
     }
 
     #[test]

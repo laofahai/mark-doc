@@ -23,9 +23,66 @@ describe('document save behavior', () => {
     expect(decision.allowedKinds).not.toContain('docx')
   })
 
-  it('new documents default to mdoc with markdown as alternate', () => {
+  it('new documents default to mdoc and allow markdown as an alternate', () => {
     const decision = resolveSaveTarget(doc({ type: 'new' }))
     expect(decision.defaultKind).toBe('mdoc')
     expect(decision.allowedKinds).toEqual(['mdoc', 'markdown'])
+    expect(decision.requiresDialog).toBe(true)
+  })
+
+  it('new documents with package-only resources prompt for mdoc', () => {
+    const decision = resolveSaveTarget({
+      ...doc({ type: 'new' }),
+      assets: { references: ['assets/screenshot.png'] },
+      dirty: { markdown: true, assets: true, presentation: false },
+    })
+
+    expect(decision).toEqual({
+      defaultKind: 'mdoc',
+      allowedKinds: ['mdoc', 'markdown'],
+      requiresDialog: true,
+    })
+  })
+
+  it('plain markdown with existing local resource references keeps in-place markdown save', () => {
+    const decision = resolveSaveTarget({
+      ...doc({ type: 'markdown', path: '/docs/report.md' }),
+      assets: { references: ['assets/diagram.png'] },
+      dirty: { markdown: true, assets: false, presentation: false },
+    })
+
+    expect(decision).toEqual({
+      defaultKind: 'markdown',
+      allowedKinds: ['markdown', 'mdoc'],
+      requiresDialog: false,
+    })
+  })
+
+  it('plain markdown with newly imported assets prompts to save as mdoc on normal save', () => {
+    const decision = resolveSaveTarget({
+      ...doc({ type: 'markdown', path: '/docs/report.md' }),
+      assets: { references: ['assets/pasted.png'] },
+      dirty: { markdown: true, assets: true, presentation: false },
+    })
+
+    expect(decision).toEqual({
+      defaultKind: 'mdoc',
+      allowedKinds: ['mdoc', 'markdown'],
+      requiresDialog: true,
+    })
+  })
+
+  it('plain markdown with inline base64 images prompts to save as mdoc on normal save', () => {
+    const decision = resolveSaveTarget({
+      ...doc({ type: 'markdown', path: '/docs/report.md' }),
+      markdown: '![screenshot](data:image/png;base64,AQID)',
+      dirty: { markdown: true, assets: false, presentation: false },
+    })
+
+    expect(decision).toEqual({
+      defaultKind: 'mdoc',
+      allowedKinds: ['mdoc', 'markdown'],
+      requiresDialog: true,
+    })
   })
 })

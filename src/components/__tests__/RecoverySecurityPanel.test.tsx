@@ -44,8 +44,23 @@ describe('recovery and security panels', () => {
       onAllowUrl={vi.fn()}
     />)
 
+    expect(screen.getByText('package.quarantinedResources')).toBeInTheDocument()
+    expect(screen.queryByText('package.corruptedRecovery')).not.toBeInTheDocument()
     expect(screen.getByText('presentation/print.css')).toBeInTheDocument()
     expect(screen.queryByText('security.enableRemoteForDocument')).not.toBeInTheDocument()
+  })
+
+  it('shows recovery mode when a broken package was recovered', () => {
+    render(<PackageSecurityPanel
+      recovered
+      quarantined={['presentation/print.css']}
+      onTrustDocument={vi.fn()}
+      onAllowResourceType={vi.fn()}
+      onAllowDomain={vi.fn()}
+      onAllowUrl={vi.fn()}
+    />)
+
+    expect(screen.getByText('package.corruptedRecovery')).toBeInTheDocument()
   })
 
   it('does not render when no package resources are quarantined', () => {

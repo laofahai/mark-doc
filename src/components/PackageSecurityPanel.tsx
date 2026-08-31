@@ -3,6 +3,7 @@ import type { RemoteResourceType } from '../services/security/PackageSecurityPol
 
 interface Props {
   quarantined: string[]
+  recovered?: boolean
   onTrustDocument: () => void
   onAllowResourceType: (type: RemoteResourceType) => void
   onAllowDomain: (domain: string) => void
@@ -35,7 +36,7 @@ function remoteUrl(value: string) {
   }
 }
 
-export function PackageSecurityPanel({ quarantined, onTrustDocument, onAllowResourceType, onAllowDomain, onAllowUrl }: Props) {
+export function PackageSecurityPanel({ quarantined, recovered = false, onTrustDocument, onAllowResourceType, onAllowDomain, onAllowUrl }: Props) {
   const { t } = useTranslation()
 
   if (quarantined.length === 0) return null
@@ -44,7 +45,7 @@ export function PackageSecurityPanel({ quarantined, onTrustDocument, onAllowReso
 
   return (
     <div className="shrink-0 border-b border-border bg-background px-4 py-2 text-sm">
-      <div className="font-medium text-foreground">{t('package.corruptedRecovery')}</div>
+      <div className="font-medium text-foreground">{t(recovered ? 'package.corruptedRecovery' : 'package.quarantinedResources')}</div>
       <ul className="mt-2 text-xs text-muted-foreground">
         {quarantined.map(path => <li key={path}>{path}</li>)}
       </ul>

@@ -1,9 +1,15 @@
 import { invoke } from '@tauri-apps/api/core'
-import { save } from '@tauri-apps/plugin-dialog'
-import { copyFile, mkdir, readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { copyFile, readTextFile, selectSavePath, writeTextFile } from '../../native-file'
 import { DocumentService } from '../document-service'
 import type { DocumentModel } from '../model'
+
+vi.mock('../../native-file', () => ({
+  copyFile: vi.fn(),
+  readTextFile: vi.fn(),
+  selectSavePath: vi.fn(),
+  writeTextFile: vi.fn(),
+}))
 
 function markdownDocument(): DocumentModel {
   return {
@@ -23,10 +29,30 @@ function markdownDocument(): DocumentModel {
   }
 }
 
+function newDocument(overrides: Partial<DocumentModel> = {}): DocumentModel {
+  return {
+    id: 'new-doc',
+    source: { type: 'new' },
+    workspace: {
+      id: 'new-workspace',
+      rootPath: '/tmp/markdoc/paste-source',
+      entryPath: '/tmp/markdoc/paste-source/document.md',
+      assetsPath: '/tmp/markdoc/paste-source/assets',
+      storage: { type: 'temporary', rootPath: '/tmp/markdoc/paste-source', recoveryKey: 'new-doc' },
+    },
+    markdown: '# Untitled',
+    metadata: {},
+    assets: { references: [] },
+    presentation: {},
+    dirty: { markdown: true, assets: false, presentation: false },
+    ...overrides,
+  }
+}
+
 describe('DocumentService package saves', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(save).mockResolvedValue('/exports/report.mdoc')
+    vi.mocked(selectSavePath).mockResolvedValue('/exports/report.mdoc')
     vi.mocked(invoke).mockResolvedValue({ outputPath: '/exports/report.mdoc', recoveryPath: null })
   })
 
@@ -80,7 +106,111 @@ describe('DocumentService package saves', () => {
       entry: 'document.md',
       files: ['assets/diagram.png', 'document.md'],
     })
-    expect(mkdir).toHaveBeenCalledWith(input.workspaceRoot, { recursive: true })
+    expect(writeTextFile).toHaveBeenCalledWith(`${input.workspaceRoot}/document.md`, '![diagram](assets/diagram.png)')
+    expect(copyFile).toHaveBeenCalledWith('/docs/assets/diagram.png', `${input.workspaceRoot}/assets/diagram.png`)
+  })
+
+  it('defaults a new document first save to an mdoc package while keeping markdown available', async () => {
+    const saved = await new DocumentService().saveDocument(newDocument())
+
+    expect(saved.ok).toBe(true)
+    expect(selectSavePath).toHaveBeenCalledWith({
+      filters: [
+        expect.objectContaining({ extensions: ['mdoc'] }),
+        expect.objectContaining({ extensions: ['md'] }),
+      ],
+      defaultPath: 'untitled.mdoc',
+    })
+    expect(invoke).toHaveBeenCalledWith('write_mdoc_package', {
+      input: expect.objectContaining({
+        outputPath: '/exports/report.mdoc',
+        entry: 'document.md',
+        files: ['document.md'],
+      }),
+    })
+  })
+
+  it('drops text and legacy Word extensions from first package save defaults', async () => {
+    vi.mocked(selectSavePath).mockResolvedValueOnce(null)
+
+    await new DocumentService().saveDocument(newDocument({
+      source: { type: 'docx', originalPath: '/docs/report.doc', workspacePath: '/tmp/markdoc/doc-source' },
+    }))
+
+    expect(selectSavePath).toHaveBeenCalledWith(expect.objectContaining({
+      defaultPath: 'report.mdoc',
+    }))
+
+    vi.mocked(selectSavePath).mockClear()
+    await new DocumentService().saveDocument({
+      ...markdownDocument(),
+      source: { type: 'markdown', path: '/docs/notes.txt' },
+      workspace: {
+        id: 'text-workspace',
+        rootPath: '/docs',
+        entryPath: '/docs/notes.txt',
+        storage: { type: 'virtual-markdown', markdownPath: '/docs/notes.txt' },
+      },
+    })
+
+    expect(selectSavePath).toHaveBeenCalledWith(expect.objectContaining({
+      defaultPath: 'notes.mdoc',
+    }))
+  })
+
+  it('saves a new document with pasted assets as a portable package', async () => {
+    const document = newDocument({
+      markdown: '![image](assets/pasted.png)',
+      assets: { references: ['assets/pasted.png'] },
+      dirty: { markdown: true, assets: true, presentation: false },
+    })
+
+    const saved = await new DocumentService().saveDocument(document)
+
+    expect(saved.ok).toBe(true)
+    const writeCall = vi.mocked(invoke).mock.calls.find(([command]) => command === 'write_mdoc_package')
+    const input = (writeCall?.[1] as { input: { workspaceRoot: string } }).input
+    expect(input).toMatchObject({
+      outputPath: '/exports/report.mdoc',
+      entry: 'document.md',
+      files: ['assets/pasted.png', 'document.md'],
+    })
+    expect(input.workspaceRoot).not.toBe('/tmp/markdoc/paste-source')
+    expect(writeTextFile).toHaveBeenCalledWith(`${input.workspaceRoot}/document.md`, '![image](assets/pasted.png)')
+    expect(copyFile).toHaveBeenCalledWith(
+      '/tmp/markdoc/paste-source/assets/pasted.png',
+      `${input.workspaceRoot}/assets/pasted.png`,
+    )
+  })
+
+  it('saves the package even when a referenced local asset is missing', async () => {
+    vi.mocked(copyFile).mockRejectedValueOnce(new Error('missing asset'))
+    const service = new DocumentService()
+
+    const saved = await service.saveDocument(markdownDocument())
+
+    expect(saved.ok).toBe(true)
+    const writeCall = vi.mocked(invoke).mock.calls.find(([command]) => command === 'write_mdoc_package')
+    const input = (writeCall?.[1] as { input: { files: string[] } }).input
+    expect(input.files).toEqual(['document.md'])
+  })
+
+  it('can explicitly save clean plain Markdown as an mdoc package from the suggestion action', async () => {
+    const document = {
+      ...markdownDocument(),
+      dirty: { markdown: false, assets: false, presentation: false },
+    }
+
+    const saved = await new DocumentService().saveDocumentAsPackage(document)
+
+    expect(saved.ok).toBe(true)
+    const writeCall = vi.mocked(invoke).mock.calls.find(([command]) => command === 'write_mdoc_package')
+    const input = (writeCall?.[1] as { input: { workspaceRoot: string } }).input
+    expect(input).toMatchObject({
+      outputPath: '/exports/report.mdoc',
+      entry: 'document.md',
+      files: ['assets/diagram.png', 'document.md'],
+    })
     expect(writeTextFile).toHaveBeenCalledWith(`${input.workspaceRoot}/document.md`, '![diagram](assets/diagram.png)')
     expect(copyFile).toHaveBeenCalledWith('/docs/assets/diagram.png', `${input.workspaceRoot}/assets/diagram.png`)
   })
@@ -125,6 +255,62 @@ describe('DocumentService package saves', () => {
           'presentation/reference.docx',
         ],
       },
+    })
+  })
+
+  it('includes assets added after opening an existing package', async () => {
+    const document: DocumentModel = {
+      ...markdownDocument(),
+      source: { type: 'package', packagePath: '/docs/report.mdoc', extractedWorkspacePath: '/tmp/package' },
+      workspace: {
+        id: 'package-workspace',
+        rootPath: '/tmp/package',
+        entryPath: '/tmp/package/document.md',
+        packageEntries: ['document.md', 'assets/original.png'],
+        packageManifest: { format: 'markdoc-package', version: 1, entry: 'document.md' },
+        storage: { type: 'temporary', rootPath: '/tmp/package', recoveryKey: 'package-doc' },
+      },
+      markdown: '![original](assets/original.png)\n![pasted](assets/pasted-1.png)',
+      assets: { references: ['assets/original.png', 'assets/pasted-1.png'] },
+      dirty: { markdown: true, assets: true, presentation: false },
+    }
+
+    const saved = await new DocumentService().saveDocument(document)
+
+    expect(saved.ok).toBe(true)
+    expect(invoke).toHaveBeenCalledWith('write_mdoc_package', {
+      input: expect.objectContaining({
+        workspaceRoot: '/tmp/package',
+        outputPath: '/docs/report.mdoc',
+        entry: 'document.md',
+        files: ['assets/original.png', 'assets/pasted-1.png', 'document.md'],
+      }),
+    })
+  })
+
+  it('does not send writer-owned package metadata paths back as user resources', async () => {
+    const document: DocumentModel = {
+      ...markdownDocument(),
+      source: { type: 'package', packagePath: '/docs/report.mdoc', extractedWorkspacePath: '/tmp/package' },
+      workspace: {
+        id: 'package-workspace',
+        rootPath: '/tmp/package',
+        entryPath: '/tmp/package/document.md',
+        packageEntries: ['README.md', 'manifest.json', 'document.md', 'assets/original.png'],
+        packageManifest: { format: 'markdoc-package', version: 1, entry: 'document.md' },
+        storage: { type: 'temporary', rootPath: '/tmp/package', recoveryKey: 'package-doc' },
+      },
+      assets: { references: ['assets/original.png'] },
+      dirty: { markdown: true, assets: false, presentation: false },
+    }
+
+    const saved = await new DocumentService().saveDocument(document)
+
+    expect(saved.ok).toBe(true)
+    expect(invoke).toHaveBeenCalledWith('write_mdoc_package', {
+      input: expect.objectContaining({
+        files: ['assets/original.png', 'document.md'],
+      }),
     })
   })
 })

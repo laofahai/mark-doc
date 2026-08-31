@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { resolveEditorLanguage } from '../Editor'
 import { VditorEditorAdapter } from '../VditorEditorAdapter'
 import { PackageSecurityPolicy } from '../../../services/security/PackageSecurityPolicy'
-import { enforceRemoteResourcePolicy, getCanonicalEditorMarkdown, installRemoteResourceRenderBoundary, restoreBlockedResources } from '../resource-policy'
+import { enforceRemoteResourcePolicy, getCanonicalEditorMarkdown, installRemoteResourceRenderBoundary, observeRemoteResourcePolicy, restoreBlockedResources } from '../resource-policy'
 
 describe('VditorEditorAdapter', () => {
   it('gets and sets markdown without exposing Vditor to document services', () => {
@@ -124,6 +124,52 @@ describe('rendered editor resource policy', () => {
     expect(root.querySelector('#script')?.hasAttribute('src')).toBe(false)
   })
 
+  it('blocks iframe srcdoc documents that would load denied remote resources', () => {
+    const root = document.createElement('div')
+    root.innerHTML = '<iframe id="frame" srcdoc="<img src=&quot;https://cdn.example.com/image.png&quot;>"></iframe>'
+
+    enforceRemoteResourcePolicy(root, PackageSecurityPolicy.default())
+
+    expect(root.querySelector('#frame')?.hasAttribute('srcdoc')).toBe(false)
+    const canonicalClone = root.cloneNode(true) as HTMLElement
+    restoreBlockedResources(canonicalClone)
+    expect(canonicalClone.querySelector('#frame')?.getAttribute('srcdoc')).toContain('https://cdn.example.com/image.png')
+  })
+
+  it('blocks SVG remote href and xlink:href resource loads', () => {
+    const root = document.createElement('div')
+    root.innerHTML = [
+      '<svg>',
+      '<image id="svg-href" href="https://cdn.example.com/image.svg"></image>',
+      '<use id="svg-xlink" xlink:href="https://cdn.example.com/sprite.svg#icon"></use>',
+      '</svg>',
+    ].join('')
+
+    enforceRemoteResourcePolicy(root, PackageSecurityPolicy.default())
+
+    expect(root.querySelector('#svg-href')?.hasAttribute('href')).toBe(false)
+    expect(root.querySelector('#svg-xlink')?.hasAttribute('xlink:href')).toBe(false)
+  })
+
+  it('observes newly inserted iframe srcdoc and SVG remote href attributes', async () => {
+    const root = document.createElement('div')
+    const disconnect = observeRemoteResourcePolicy(root, () => PackageSecurityPolicy.default())
+    const frame = document.createElement('iframe')
+    frame.setAttribute('srcdoc', '<img src="https://cdn.example.com/image.png">')
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    const image = document.createElementNS('http://www.w3.org/2000/svg', 'image')
+    image.setAttribute('href', 'https://cdn.example.com/image.svg')
+    svg.appendChild(image)
+
+    root.appendChild(frame)
+    root.appendChild(svg)
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(frame.hasAttribute('srcdoc')).toBe(false)
+    expect(image.hasAttribute('href')).toBe(false)
+    disconnect?.()
+  })
+
   it('keeps explicitly allowed rendered resource types', () => {
     const root = document.createElement('div')
     root.innerHTML = '<img src="https://images.example.com/diagram.png">'
@@ -131,6 +177,39 @@ describe('rendered editor resource policy', () => {
     enforceRemoteResourcePolicy(root, PackageSecurityPolicy.default().allowResourceType('image'))
 
     expect(root.querySelector('img')?.getAttribute('src')).toBe('https://images.example.com/diagram.png')
+  })
+
+  it('renders workspace-relative images through local display URLs without changing canonical Markdown', () => {
+    const root = document.createElement('div')
+    root.innerHTML = [
+      '<img id="local" src="assets/pasted.png">',
+      '<img id="remote" src="https://images.example.com/diagram.png">',
+    ].join('')
+
+    enforceRemoteResourcePolicy(root, PackageSecurityPolicy.default(), path => (
+      path === 'assets/pasted.png' ? 'blob:markdoc-local-asset' : null
+    ))
+
+    expect(root.querySelector('#local')?.getAttribute('src')).toBe('blob:markdoc-local-asset')
+    expect(root.querySelector('#local')?.getAttribute('data-markdoc-original-src')).toBe('assets/pasted.png')
+    expect(root.querySelector('#remote')?.hasAttribute('src')).toBe(false)
+
+    const canonicalClone = root.cloneNode(true) as HTMLElement
+    restoreBlockedResources(canonicalClone)
+    expect(canonicalClone.querySelector('#local')?.getAttribute('src')).toBe('assets/pasted.png')
+    expect(canonicalClone.querySelector('#remote')?.getAttribute('src')).toBe('https://images.example.com/diagram.png')
+  })
+
+  it('does not treat data image URLs as workspace-relative local assets', () => {
+    const root = document.createElement('div')
+    root.innerHTML = '<img id="inline" src="data:image/png;base64,AQID">'
+    const resolveAssetUrl = vi.fn(() => 'blob:wrong')
+
+    enforceRemoteResourcePolicy(root, PackageSecurityPolicy.default(), resolveAssetUrl)
+
+    expect(resolveAssetUrl).not.toHaveBeenCalled()
+    expect(root.querySelector('#inline')?.getAttribute('src')).toBe('data:image/png;base64,AQID')
+    expect(root.querySelector('#inline')?.hasAttribute('data-markdoc-original-src')).toBe(false)
   })
 
   it('serializes canonical Markdown from a restored clone of the blocked editor DOM', () => {

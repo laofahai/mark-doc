@@ -1,9 +1,14 @@
-import { mkdir, readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
 import { describe, expect, it, vi } from 'vitest'
+import { readTextFile, writeTextFile } from '../../native-file'
 import type { DocumentModel } from '../model'
 import { DocumentSessionStore } from '../session-store'
 import { RecoveryService } from '../recovery-service'
 import { resolveExternalConflict, resolveSaveTarget } from '../save-strategy'
+
+vi.mock('../../native-file', () => ({
+  readTextFile: vi.fn(),
+  writeTextFile: vi.fn(),
+}))
 
 function model(source: DocumentModel['source']): DocumentModel {
   return {
@@ -24,7 +29,7 @@ function model(source: DocumentModel['source']): DocumentModel {
 }
 
 describe('document session and save strategy', () => {
-  it('defaults new documents to mdoc while allowing markdown', () => {
+  it('defaults clean new documents to mdoc while allowing markdown', () => {
     expect(resolveSaveTarget(model({ type: 'new' }))).toEqual({
       defaultKind: 'mdoc',
       allowedKinds: ['mdoc', 'markdown'],
@@ -68,7 +73,6 @@ describe('document session and save strategy', () => {
     })
 
     expect(state.draftPath).toBe('/tmp/markdoc/recovery/doc-1.md')
-    expect(mkdir).toHaveBeenCalledWith('/tmp/markdoc/recovery', { recursive: true })
     expect(writeTextFile).toHaveBeenCalledWith(state.draftPath, '# Preserved draft')
     vi.mocked(readTextFile).mockResolvedValueOnce('# Draft from disk')
     expect(state.priority).toEqual(['content-preserved', 'original-unchanged', 'user-visible'])

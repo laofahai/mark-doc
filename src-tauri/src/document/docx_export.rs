@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ExportWorkspaceToDocxInput {
     pub markdown_path: String,
     pub output_path: String,
@@ -36,7 +37,6 @@ fn absolutize_export_paths(
     })
 }
 
-#[tauri::command]
 pub fn export_workspace_to_docx(
     input: ExportWorkspaceToDocxInput,
 ) -> Result<ExportWorkspaceToDocxResult, String> {
@@ -105,6 +105,23 @@ fn path_string(path: &Path) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn deserializes_frontend_camel_case_export_input() {
+        let input: ExportWorkspaceToDocxInput = serde_json::from_value(serde_json::json!({
+            "markdownPath": "/tmp/workspace/document.md",
+            "outputPath": "/tmp/workspace/report.docx",
+            "referenceDocx": "/tmp/workspace/reference.docx"
+        }))
+        .unwrap();
+
+        assert_eq!(input.markdown_path, "/tmp/workspace/document.md");
+        assert_eq!(input.output_path, "/tmp/workspace/report.docx");
+        assert_eq!(
+            input.reference_docx.as_deref(),
+            Some("/tmp/workspace/reference.docx")
+        );
+    }
 
     #[test]
     fn resolves_export_working_directory_from_markdown_parent() {

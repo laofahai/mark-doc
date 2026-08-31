@@ -3,9 +3,9 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   Button, Label,
 } from '@linch-tech/desktop-core'
-import { open, save } from '@tauri-apps/plugin-dialog'
 import { useTranslation } from 'react-i18next'
 import { FileText, Check, Upload } from 'lucide-react'
+import { selectDocumentFile, selectSavePath } from '../services/native-file'
 
 /** 缩短路径显示：保留首段 + 最后一个目录 + 文件名，中间用 … 代替 */
 function shortenPath(p: string, maxLen = 45): string {
@@ -66,19 +66,19 @@ export function ExportDocxDialog({ open: isOpen, onOpenChange, originalDocxPath,
   }, [isOpen, originalDocxPath, defaultFileName, currentFilePath])
 
   const handlePickCustom = useCallback(async () => {
-    const filePath = await open({
-      filters: [{ name: 'Word Template', extensions: ['docx'] }],
+    const filePath = await selectDocumentFile({
+      filters: [{ name: t('fileFilters.wordTemplate'), extensions: ['docx'] }],
     })
     if (filePath) {
       const path = filePath as string
       setCustomPath(path)
       setSelected({ type: 'custom', path })
     }
-  }, [])
+  }, [t])
 
   const handlePickOutputPath = useCallback(async () => {
-    const filePath = await save({
-      filters: [{ name: 'Word', extensions: ['docx'] }],
+    const filePath = await selectSavePath({
+      filters: [{ name: t('fileFilters.word'), extensions: ['docx'] }],
       defaultPath: outputPath || undefined,
     })
     if (filePath) {

@@ -1,7 +1,7 @@
 import { ok, type Result } from '../document/errors'
 import type { DocumentModel } from '../document/model'
 import { createMarkdownWorkspace } from '../document/workspace-service'
-import { findLocalAssetReferences } from '../assets/AssetManager'
+import { findLocalAssetReferences, findPackageResourceReferences } from '../assets/AssetManager'
 
 let documentCounter = 0
 
@@ -13,12 +13,14 @@ function nextDocumentId() {
 export interface MarkdownImportResult {
   document: DocumentModel
   localResourceReferences: string[]
+  packageResourceReferences: string[]
 }
 
 export class MarkdownImporter {
   import(path: string, markdown: string): Result<MarkdownImportResult> {
     const workspace = createMarkdownWorkspace(path)
     const references = findLocalAssetReferences(markdown)
+    const packageReferences = findPackageResourceReferences(markdown)
     return ok({
       document: {
         id: nextDocumentId(),
@@ -31,6 +33,7 @@ export class MarkdownImporter {
         dirty: { markdown: false, assets: false, presentation: false },
       },
       localResourceReferences: references,
+      packageResourceReferences: packageReferences,
     })
   }
 }

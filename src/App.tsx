@@ -1,23 +1,34 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { LinchDesktopProvider, Shell, Separator, addI18nResources } from '@linch-tech/desktop-core'
 import { EditorPage } from './pages/EditorPage'
 import { Sidebar } from './components/Sidebar'
-import { FileProvider, useFile } from './contexts/FileContext'
-import { DocumentProvider } from './contexts/DocumentContext'
+import { SidebarResizeHandle } from './components/SidebarResizeHandle'
+import { DEFAULT_SIDEBAR_WIDTH, clampSidebarWidth, effectiveEditorPageWidth, effectiveSidebarWidth, type PageWidth } from './components/sidebar-width'
+import { DocumentCommandBar } from './components/DocumentCommandBar'
+import { DocumentProvider, useDocument } from './contexts/DocumentContext'
 import { PandocGuard } from './components/PandocGuard'
 import { SettingsDialog } from './components/SettingsDialog'
+import { useDocumentCommandActions } from './hooks/useDocumentCommandActions'
+import { useDisableNativeContextMenu } from './hooks/useDisableNativeContextMenu'
 import type { LinchDesktopConfig } from '@linch-tech/desktop-core'
 import { useTranslation } from 'react-i18next'
 import { Settings } from 'lucide-react'
 import zhLocale from './locales/zh'
 import enLocale from './locales/en'
+import { APP_VERSION } from './app-version'
 
 // 在模块级别立即注入翻译资源，确保首次渲染时就可用
 addI18nResources('zh', zhLocale)
 addI18nResources('en', enLocale)
 
-type PageWidth = 'normal' | 'wide' | 'full'
+const SIDEBAR_WIDTH_KEY = 'mark-doc-sidebar-width'
+const MIN_VIEWPORT_WIDTH = 900
+
+function loadSidebarWidth() {
+  const saved = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY))
+  return Number.isFinite(saved) && saved > 0 ? clampSidebarWidth(saved) : DEFAULT_SIDEBAR_WIDTH
+}
 
 function LogoIcon({ size = 16 }: { size?: number }) {
   return (
@@ -35,7 +46,8 @@ function LogoIcon({ size = 16 }: { size?: number }) {
 }
 
 function TitleLeft() {
-  const { activeTab } = useFile()
+  const documentContext = useDocument()
+  const activeTab = documentContext.tabs.find(tab => tab.id === documentContext.activeTabId) || null
   return (
     <div className="flex items-center gap-1.5">
       <LogoIcon size={18} />
@@ -52,37 +64,78 @@ function TitleLeft() {
   )
 }
 
-function TitleRight({ onOpenSettings }: { onOpenSettings: () => void }) {
+function TitleRight({
+  pageWidth,
+  onPageWidthChange,
+  onOpenSettings,
+}: {
+  pageWidth: PageWidth
+  onPageWidthChange: (width: PageWidth) => void
+  onOpenSettings: () => void
+}) {
   const { t } = useTranslation()
+  const documentCommands = useDocumentCommandActions({ pageWidth, onPageWidthChange })
   return (
-    <button
-      className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors bg-transparent border-none cursor-pointer"
-      onClick={onOpenSettings}
-      title={t('app.settings')}
-    >
-      <Settings size={14} />
-    </button>
+    <div className="flex items-center gap-1">
+      <DocumentCommandBar actions={documentCommands.actions} />
+      <Separator orientation="vertical" className="h-3" />
+      <button
+        className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors bg-transparent border-none cursor-pointer"
+        onClick={onOpenSettings}
+        title={t('app.settings')}
+      >
+        <Settings size={14} />
+      </button>
+      {documentCommands.exportDialog}
+    </div>
   )
 }
 
 function AppShell() {
+  useDisableNativeContextMenu()
   const [pageWidth, setPageWidth] = useState<PageWidth>('wide')
-  const [hasFolderOpen, setHasFolderOpen] = useState(false)
+  const [hasSidebarContent, setHasSidebarContent] = useState(false)
+  const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth || MIN_VIEWPORT_WIDTH)
+  const activeSidebarWidth = effectiveSidebarWidth({ hasSidebarContent, requestedWidth: sidebarWidth, viewportWidth })
+  const activePageWidth = effectiveEditorPageWidth(pageWidth, viewportWidth)
+
+  useEffect(() => {
+    const updateViewportWidth = () => setViewportWidth(window.innerWidth || MIN_VIEWPORT_WIDTH)
+    updateViewportWidth()
+    window.addEventListener('resize', updateViewportWidth)
+    return () => window.removeEventListener('resize', updateViewportWidth)
+  }, [])
+
+  const updateSidebarWidth = (width: number) => {
+    const nextWidth = clampSidebarWidth(width)
+    setSidebarWidth(nextWidth)
+    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(nextWidth))
+  }
 
   const config: Partial<LinchDesktopConfig> = {
-    brand: { name: 'app.name', version: `v${__APP_VERSION__}` },
+    brand: { name: 'app.name', version: `v${APP_VERSION}` },
     nav: [],
     features: { updater: true, database: false, sentry: false },
-    layout: { sidebar: { width: hasFolderOpen ? 220 : 0 } },
+    layout: { sidebar: { width: activeSidebarWidth } },
     slots: {
       titleBar: {
         left: <TitleLeft />,
-        right: <TitleRight onOpenSettings={() => setSettingsOpen(true)} />,
+        right: (
+          <TitleRight
+            pageWidth={pageWidth}
+            onPageWidthChange={setPageWidth}
+            onOpenSettings={() => setSettingsOpen(true)}
+          />
+        ),
       },
       sidebar: {
-        afterNav: <Sidebar onFolderStateChange={setHasFolderOpen} />,
+        afterNav: <Sidebar onSidebarStateChange={setHasSidebarContent} />,
         footer: <></>,
+      },
+      shell: {
+        beforeContent: activeSidebarWidth > 0 ? <SidebarResizeHandle width={sidebarWidth} onWidthCommit={updateSidebarWidth} /> : null,
       },
     },
     i18n: {
@@ -100,7 +153,7 @@ function AppShell() {
       <BrowserRouter>
         <Routes>
           <Route element={<Shell />}>
-            <Route path="/" element={<EditorPage pageWidth={pageWidth} onPageWidthChange={setPageWidth} />} />
+            <Route path="/" element={<EditorPage pageWidth={activePageWidth} />} />
           </Route>
         </Routes>
       </BrowserRouter>
@@ -112,11 +165,9 @@ function AppShell() {
 function App() {
   return (
     <DocumentProvider>
-      <FileProvider>
-        <PandocGuard>
-          <AppShell />
-        </PandocGuard>
-      </FileProvider>
+      <PandocGuard>
+        <AppShell />
+      </PandocGuard>
     </DocumentProvider>
   )
 }

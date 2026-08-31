@@ -40,6 +40,27 @@ describe('package import/export wrappers', () => {
     })
   })
 
+  it('validates packages through validate_mdoc_package command', async () => {
+    vi.clearAllMocks()
+    vi.mocked(invoke).mockResolvedValueOnce({
+      manifest: { format: 'markdoc-package', version: 1, entry: 'document.md' },
+      entries: ['document.md'],
+      quarantined: ['assets/icon.svg'],
+      has_readme_hint: false,
+      warnings: ['package.missingReadmeHint', 'package.quarantinedEntries'],
+    })
+    const importer = new PackageImporter()
+
+    const result = await importer.validate('/docs/legacy.mdoc')
+
+    expect(result.ok).toBe(true)
+    expect(invoke).toHaveBeenCalledWith('validate_mdoc_package', { packagePath: '/docs/legacy.mdoc' })
+    if (result.ok) {
+      expect(result.value.warnings).toEqual(['package.missingReadmeHint', 'package.quarantinedEntries'])
+      expect(result.value.has_readme_hint).toBe(false)
+    }
+  })
+
   it('preserves the manifest entry and safe workspace file list when repacking', async () => {
     vi.clearAllMocks()
     vi.mocked(invoke).mockResolvedValueOnce({ outputPath: '/docs/report.mdoc', recoveryPath: null })

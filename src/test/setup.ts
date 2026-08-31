@@ -3,23 +3,12 @@ import { vi } from 'vitest'
 
 // Mock Tauri APIs
 vi.mock('@tauri-apps/plugin-fs', () => ({
-  readTextFile: vi.fn(),
-  writeTextFile: vi.fn(),
-  copyFile: vi.fn(),
-  writeFile: vi.fn(),
-  readFile: vi.fn(),
-  mkdir: vi.fn(),
-  remove: vi.fn(),
   watch: vi.fn(() => Promise.resolve(vi.fn())),
-}))
-
-vi.mock('@tauri-apps/plugin-dialog', () => ({
-  open: vi.fn(),
-  save: vi.fn(),
 }))
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
+  isTauri: vi.fn(() => false),
 }))
 
 vi.mock('@tauri-apps/api/event', () => ({

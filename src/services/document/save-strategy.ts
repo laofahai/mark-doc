@@ -1,4 +1,5 @@
 import type { DocumentModel } from './model'
+import { containsBase64Images } from '../assets/AssetManager'
 
 export type SaveKind = 'mdoc' | 'markdown' | 'docx'
 
@@ -7,6 +8,12 @@ export interface SaveTargetDecision {
   allowedKinds: SaveKind[]
   requiresDialog: boolean
   disallowOverwriteOriginal?: boolean
+}
+
+function needsPackageSave(document: DocumentModel) {
+  return document.dirty.assets
+    || document.dirty.presentation
+    || containsBase64Images(document.markdown)
 }
 
 export function resolveSaveTarget(document: DocumentModel): SaveTargetDecision {
@@ -22,7 +29,7 @@ export function resolveSaveTarget(document: DocumentModel): SaveTargetDecision {
     }
   }
   if (document.source.type === 'markdown') {
-    return document.dirty.assets || document.dirty.presentation
+    return needsPackageSave(document)
       ? { defaultKind: 'mdoc', allowedKinds: ['mdoc', 'markdown'], requiresDialog: true }
       : { defaultKind: 'markdown', allowedKinds: ['markdown', 'mdoc'], requiresDialog: false }
   }

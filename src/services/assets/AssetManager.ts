@@ -1,8 +1,3 @@
-import { writeFile } from '@tauri-apps/plugin-fs'
-import { err, ok, type Result } from '../document/errors'
-import type { DocumentWorkspace } from '../document/model'
-import { resolveWorkspacePath } from '../document/workspace-service'
-
 export interface AssetRef {
   markdownPath: string
   absolutePath: string
@@ -10,40 +5,58 @@ export interface AssetRef {
   mimeType?: string
 }
 
-interface ImportBytesOptions {
-  preferredName: string
-  mimeType?: string
-}
-
 const MD_IMAGE_RE = /!\[[^\]]*\]\(([^)]+)\)/g
 const HTML_IMG_RE = /<img\s[^>]*src=["']([^"']+)["'][^>]*>/g
 const BASE64_IMAGE_RE = /data:image\/[a-zA-Z0-9.+-]+;base64,/i
 const MD_BASE64_IMAGE_RE = /(!\[[^\]]*\]\()((?:data:image\/[a-zA-Z0-9.+-]+;base64,)[^)]+)(\))/gi
+const HTML_TAG_RE = /<([a-z][a-z0-9-]*)\b[^>]*>/gi
+const HTML_ATTR_RE = /([a-z_:][-a-z0-9_:.]*)\s*=\s*(["'])(.*?)\2/gi
+const CSS_URL_RE = /url\(\s*(["']?)(.*?)\1\s*\)/gi
+const MDOC_INLINE_BASE64_REFERENCE = 'inline-base64-image'
+const HTML_RESOURCE_ATTRIBUTES: Record<string, string[]> = {
+  audio: ['src'],
+  embed: ['src'],
+  iframe: ['src'],
+  img: ['src', 'srcset'],
+  input: ['src'],
+  link: ['href'],
+  object: ['data'],
+  script: ['src'],
+  source: ['src', 'srcset'],
+  track: ['src'],
+  video: ['src', 'poster'],
+}
 
 function isExternalReference(path: string) {
   return path.startsWith('//') || /^[a-z][a-z0-9+.-]*:/i.test(path)
 }
 
-function slugifyName(name: string) {
-  const dot = name.lastIndexOf('.')
-  const base = dot >= 0 ? name.slice(0, dot) : name
-  const ext = dot >= 0 ? name.slice(dot + 1).toLowerCase() : 'bin'
-  const slug = base
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'asset'
-  return { slug, ext }
+function isPackageLocalReference(path: string) {
+  return Boolean(path)
+    && !path.startsWith('#')
+    && !path.startsWith('/')
+    && !path.startsWith('\\')
+    && !path.includes('\\')
+    && !path.split('/').includes('..')
+    && !isExternalReference(path)
 }
 
-function shortHash(bytes: Uint8Array) {
-  let hash = 2166136261
-  for (const byte of bytes) {
-    hash ^= byte
-    hash = Math.imul(hash, 16777619)
+function cleanResourceReference(value: string) {
+  return value.trim()
+    .replace(/^<(.+)>$/, '$1')
+    .replace(/^["'](.+)["']$/, '$1')
+}
+
+function addLocalReference(refs: Set<string>, value: string) {
+  const path = cleanResourceReference(value)
+  if (isPackageLocalReference(path)) refs.add(path)
+}
+
+function addSrcsetReferences(refs: Set<string>, value: string) {
+  for (const candidate of value.split(',')) {
+    const path = candidate.trim().split(/\s+/)[0]
+    if (path) addLocalReference(refs, path)
   }
-  return (hash >>> 0).toString(16).padStart(8, '0')
 }
 
 export function containsBase64Images(markdown: string) {
@@ -55,10 +68,40 @@ export function findLocalAssetReferences(markdown: string) {
   for (const re of [new RegExp(MD_IMAGE_RE), new RegExp(HTML_IMG_RE)]) {
     let match: RegExpExecArray | null
     while ((match = re.exec(markdown)) !== null) {
-      const path = match[1].trim()
-      if (path && !isExternalReference(path)) refs.add(path)
+      addLocalReference(refs, match[1])
     }
   }
+
+  let tagMatch: RegExpExecArray | null
+  while ((tagMatch = HTML_TAG_RE.exec(markdown)) !== null) {
+    const tagName = tagMatch[1].toLowerCase()
+    const resourceAttributes = HTML_RESOURCE_ATTRIBUTES[tagName]
+    if (!resourceAttributes) continue
+
+    const attrs = tagMatch[0]
+    let attrMatch: RegExpExecArray | null
+    const attrRe = new RegExp(HTML_ATTR_RE)
+    while ((attrMatch = attrRe.exec(attrs)) !== null) {
+      const attrName = attrMatch[1].toLowerCase()
+      if (!resourceAttributes.includes(attrName)) continue
+      if (attrName === 'srcset') addSrcsetReferences(refs, attrMatch[3])
+      else addLocalReference(refs, attrMatch[3])
+    }
+  }
+
+  let cssMatch: RegExpExecArray | null
+  const cssRe = new RegExp(CSS_URL_RE)
+  while ((cssMatch = cssRe.exec(markdown)) !== null) {
+    addLocalReference(refs, cssMatch[2])
+  }
+
+  return [...refs]
+}
+
+export function findPackageResourceReferences(markdown: string) {
+  const refs = new Set<string>()
+  if (containsBase64Images(markdown)) refs.add(MDOC_INLINE_BASE64_REFERENCE)
+  for (const reference of findLocalAssetReferences(markdown)) refs.add(reference)
   return [...refs]
 }
 
@@ -71,26 +114,4 @@ export function rewriteBase64ImageReferences(
     if (!replacement || isExternalReference(replacement)) return match
     return `${prefix}${replacement}${suffix}`
   })
-}
-
-export class AssetManager {
-  constructor(private workspace: DocumentWorkspace) {}
-
-  async importBytes(bytes: Uint8Array, options: ImportBytesOptions): Promise<Result<AssetRef>> {
-    const { slug, ext } = slugifyName(options.preferredName)
-    const markdownPath = `assets/${slug}-${shortHash(bytes)}.${ext}`
-    const resolved = resolveWorkspacePath(this.workspace, markdownPath)
-    if (!resolved.ok) return resolved
-    try {
-      await writeFile(resolved.value, bytes)
-    } catch (cause) {
-      return err('assets.writeFailed', { cause })
-    }
-    return ok({
-      markdownPath,
-      absolutePath: resolved.value,
-      kind: options.mimeType?.startsWith('image/') ? 'image' : 'attachment',
-      mimeType: options.mimeType,
-    })
-  }
 }

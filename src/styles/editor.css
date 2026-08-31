@@ -1,0 +1,26 @@
+/* ===== Editor layout ===== */
+.editor-shell {
+  position: relative;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.editor-vditor-surface {
+  flex: 1 0 auto;
+  min-height: 0;
+}
+.editor-formatting-toolbar-host {
+  position: sticky;
+  bottom: 10px;
+  z-index: 30;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  margin-top: auto;
+  padding: 8px 12px 10px;
+  overflow: visible;
+  border-top: 0 !important;
+}
+.editor-vditor-surface.vditor {
+  min-height: 0 !important;
+}

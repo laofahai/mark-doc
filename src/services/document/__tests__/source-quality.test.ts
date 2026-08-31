@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { invoke } from '@tauri-apps/api/core'
-import { readTextFile } from '@tauri-apps/plugin-fs'
+import { readTextFile } from '../../native-file'
 import { containsBase64Images, findLocalAssetReferences } from '../../assets/AssetManager'
 import { DocxImporter } from '../../importers/DocxImporter'
+
+vi.mock('../../native-file', () => ({
+  readTextFile: vi.fn(),
+}))
 
 describe('source quality', () => {
   beforeEach(() => {

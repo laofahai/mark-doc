@@ -1,5 +1,7 @@
 import type { PackageSecurityPolicy, RemoteResourceType } from '../../services/security/PackageSecurityPolicy'
 
+export type LocalResourceUrlResolver = (relativePath: string) => string | null | undefined
+
 const RESOURCE_ATTRIBUTES: Record<string, Array<{ attribute: string; type: RemoteResourceType }>> = {
   AUDIO: [{ attribute: 'src', type: 'other' }],
   EMBED: [{ attribute: 'src', type: 'other' }],
@@ -12,15 +14,37 @@ const RESOURCE_ATTRIBUTES: Record<string, Array<{ attribute: string; type: Remot
   VIDEO: [{ attribute: 'src', type: 'other' }, { attribute: 'poster', type: 'image' }],
 }
 
+const SVG_RESOURCE_ATTRIBUTES = ['href', 'xlink:href']
+
 function policyUrl(value: string) {
   const trimmed = value.trim().replace(/^['"]|['"]$/g, '')
   if (trimmed.startsWith('//')) return `https:${trimmed}`
-  return /^[a-z][a-z0-9+.-]*:/i.test(trimmed) ? trimmed : null
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return null
+  try {
+    const parsed = new URL(trimmed)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.href : null
+  } catch {
+    return null
+  }
+}
+
+function hasUrlScheme(value: string) {
+  return /^[a-z][a-z0-9+.-]*:/i.test(value.trim().replace(/^['"]|['"]$/g, ''))
+}
+
+function isWorkspaceRelativeResource(value: string) {
+  const trimmed = value.trim().replace(/^['"]|['"]$/g, '')
+  return Boolean(trimmed)
+    && !trimmed.startsWith('//')
+    && !trimmed.startsWith('/')
+    && !trimmed.startsWith('#')
+    && !hasUrlScheme(trimmed)
+    && !trimmed.split('/').includes('..')
 }
 
 function cssUrls(css: string) {
   const urls: string[] = []
-  const pattern = /url\(\s*(['"]?)([^)'"\s]+)\1\s*\)|@import\s+(?:url\(\s*)?(['"])([^'"]+)\3/gi
+  const pattern = /url\(\s*(['"]?)([^)'"\s]+)\1\s*\)|@import\s+(?:url\(\s*)?(['"]?)([^)'"\s;]+)\3/gi
   let match: RegExpExecArray | null
   while ((match = pattern.exec(css)) !== null) urls.push(match[2] || match[4])
   return urls
@@ -32,7 +56,7 @@ function blocksValue(value: string, type: RemoteResourceType, policy: PackageSec
 }
 
 function markerName(attribute: string) {
-  return `data-markdoc-original-${attribute}`
+  return `data-markdoc-original-${attribute.replace(/:/g, '-')}`
 }
 
 function blockAttribute(element: Element, attribute: string, replacement?: string) {
@@ -44,8 +68,43 @@ function blockAttribute(element: Element, attribute: string, replacement?: strin
   else element.setAttribute(attribute, replacement)
 }
 
-function enforceElement(element: Element, policy: PackageSecurityPolicy) {
-  for (const resource of RESOURCE_ATTRIBUTES[element.tagName] ?? []) {
+function rewriteAttribute(element: Element, attribute: string, replacement: string) {
+  const value = element.getAttribute(attribute)
+  if (value !== null && !element.hasAttribute(markerName(attribute))) {
+    element.setAttribute(markerName(attribute), value)
+  }
+  element.setAttribute(attribute, replacement)
+}
+
+function rewriteLocalElement(element: Element, resolveLocalResourceUrl: LocalResourceUrlResolver | null | undefined) {
+  if (!resolveLocalResourceUrl) return
+  const tagName = element.tagName.toUpperCase()
+  const attributes = (RESOURCE_ATTRIBUTES[tagName] ?? [])
+    .map(resource => resource.attribute)
+    .filter(attribute => attribute !== 'srcset')
+
+  if (isSvgResourceElement(element)) attributes.push(...SVG_RESOURCE_ATTRIBUTES)
+
+  for (const attribute of new Set(attributes)) {
+    const value = element.getAttribute(attribute)
+    if (!value || !isWorkspaceRelativeResource(value)) continue
+    const displayUrl = resolveLocalResourceUrl(value)
+    if (displayUrl && displayUrl !== value) rewriteAttribute(element, attribute, displayUrl)
+  }
+}
+
+function isSvgResourceElement(element: Element) {
+  return element.namespaceURI === 'http://www.w3.org/2000/svg' || Boolean(element.closest('svg'))
+}
+
+function svgResourceType(element: Element): RemoteResourceType {
+  return element.tagName.toUpperCase() === 'IMAGE' ? 'image' : 'other'
+}
+
+function enforceElement(element: Element, policy: PackageSecurityPolicy, resolveLocalResourceUrl?: LocalResourceUrlResolver) {
+  rewriteLocalElement(element, resolveLocalResourceUrl)
+  const tagName = element.tagName.toUpperCase()
+  for (const resource of RESOURCE_ATTRIBUTES[tagName] ?? []) {
     const value = element.getAttribute(resource.attribute)
     if (!value) continue
     if (resource.attribute === 'srcset') {
@@ -57,12 +116,28 @@ function enforceElement(element: Element, policy: PackageSecurityPolicy) {
     if (blocksValue(value, resource.type, policy)) blockAttribute(element, resource.attribute)
   }
 
+  if (tagName === 'IFRAME') {
+    const srcdoc = element.getAttribute('srcdoc')
+    if (srcdoc && sanitizeRenderedHtml(srcdoc, policy, resolveLocalResourceUrl) !== srcdoc) {
+      blockAttribute(element, 'srcdoc')
+    }
+  }
+
+  if (isSvgResourceElement(element)) {
+    for (const attribute of SVG_RESOURCE_ATTRIBUTES) {
+      const value = element.getAttribute(attribute)
+      if (value && blocksValue(value, svgResourceType(element), policy)) {
+        blockAttribute(element, attribute)
+      }
+    }
+  }
+
   const inlineStyle = element.getAttribute('style')
   if (inlineStyle && cssUrls(inlineStyle).some(url => blocksValue(url, 'style', policy))) {
     blockAttribute(element, 'style')
   }
 
-  if (element.tagName === 'STYLE') {
+  if (tagName === 'STYLE') {
     const css = element.textContent ?? ''
     const type: RemoteResourceType = /@font-face/i.test(css) ? 'font' : 'style'
     if (cssUrls(css).some(url => blocksValue(url, type, policy))) {
@@ -74,24 +149,32 @@ function enforceElement(element: Element, policy: PackageSecurityPolicy) {
   }
 }
 
-export function enforceRemoteResourcePolicy(root: ParentNode, policy: PackageSecurityPolicy | null | undefined) {
+export function enforceRemoteResourcePolicy(
+  root: ParentNode,
+  policy: PackageSecurityPolicy | null | undefined,
+  resolveLocalResourceUrl?: LocalResourceUrlResolver,
+) {
   if (!policy) return
-  if (root instanceof Element) enforceElement(root, policy)
-  root.querySelectorAll('*').forEach(element => enforceElement(element, policy))
+  if (root instanceof Element) enforceElement(root, policy, resolveLocalResourceUrl)
+  root.querySelectorAll('*').forEach(element => enforceElement(element, policy, resolveLocalResourceUrl))
 }
 
-export function sanitizeRenderedHtml(html: string, policy: PackageSecurityPolicy | null | undefined) {
+export function sanitizeRenderedHtml(
+  html: string,
+  policy: PackageSecurityPolicy | null | undefined,
+  resolveLocalResourceUrl?: LocalResourceUrlResolver,
+) {
   if (!policy) return html
   const template = document.createElement('template')
   template.innerHTML = html
-  enforceRemoteResourcePolicy(template.content, policy)
+  enforceRemoteResourcePolicy(template.content, policy, resolveLocalResourceUrl)
   return template.innerHTML
 }
 
 export function restoreBlockedResources(root: ParentNode) {
   const elements = root instanceof Element ? [root, ...root.querySelectorAll('*')] : [...root.querySelectorAll('*')]
   for (const element of elements) {
-    for (const attribute of ['src', 'srcset', 'href', 'data', 'poster', 'style']) {
+    for (const attribute of ['src', 'srcset', 'href', 'xlink:href', 'data', 'poster', 'style', 'srcdoc']) {
       const marker = markerName(attribute)
       const original = element.getAttribute(marker)
       if (original === null) continue
@@ -123,13 +206,18 @@ interface VditorInternals {
 export function installRemoteResourceRenderBoundary(
   editor: { getValue(): string },
   currentPolicy: () => PackageSecurityPolicy | null | undefined,
+  currentLocalResourceUrl?: () => LocalResourceUrlResolver | null | undefined,
 ) {
   const internals = (editor as unknown as { vditor?: VditorInternals }).vditor
   if (!internals) return
   for (const method of ['Md2VditorDOM', 'Md2VditorIRDOM', 'SpinVditorDOM', 'SpinVditorIRDOM'] as const) {
     const original = internals.lute[method]
     if (!original) continue
-    internals.lute[method] = ((value: string) => sanitizeRenderedHtml(original.call(internals.lute, value), currentPolicy())) as never
+    internals.lute[method] = ((value: string) => sanitizeRenderedHtml(
+      original.call(internals.lute, value),
+      currentPolicy(),
+      currentLocalResourceUrl?.() ?? undefined
+    )) as never
   }
 }
 
@@ -147,19 +235,20 @@ export function getCanonicalEditorMarkdown(editor: { getValue(): string }) {
 export function observeRemoteResourcePolicy(
   root: HTMLElement,
   currentPolicy: () => PackageSecurityPolicy | null | undefined,
+  currentLocalResourceUrl?: () => LocalResourceUrlResolver | null | undefined,
 ) {
-  enforceRemoteResourcePolicy(root, currentPolicy())
+  enforceRemoteResourcePolicy(root, currentPolicy(), currentLocalResourceUrl?.() ?? undefined)
   const observer = new MutationObserver(records => {
     const policy = currentPolicy()
     if (!policy) return
     for (const record of records) {
       if (record.type === 'attributes') {
-        enforceRemoteResourcePolicy(record.target as Element, policy)
+        enforceRemoteResourcePolicy(record.target as Element, policy, currentLocalResourceUrl?.() ?? undefined)
         continue
       }
       record.addedNodes.forEach(node => {
-        if (node instanceof Element) enforceRemoteResourcePolicy(node, policy)
-        else if (node.parentElement) enforceRemoteResourcePolicy(node.parentElement, policy)
+        if (node instanceof Element) enforceRemoteResourcePolicy(node, policy, currentLocalResourceUrl?.() ?? undefined)
+        else if (node.parentElement) enforceRemoteResourcePolicy(node.parentElement, policy, currentLocalResourceUrl?.() ?? undefined)
       })
     }
   })
@@ -167,7 +256,7 @@ export function observeRemoteResourcePolicy(
     subtree: true,
     childList: true,
     attributes: true,
-    attributeFilter: ['src', 'srcset', 'href', 'data', 'poster', 'style'],
+    attributeFilter: ['src', 'srcset', 'href', 'xlink:href', 'data', 'poster', 'style', 'srcdoc'],
   })
   return () => observer.disconnect()
 }

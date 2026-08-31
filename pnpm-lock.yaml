@@ -14,9 +14,6 @@ importers:
       '@tauri-apps/api':
         specifier: ^2.9.5
         version: 2.10.1
-      '@tauri-apps/plugin-dialog':
-        specifier: ^2.6.0
-        version: 2.6.0
       '@tauri-apps/plugin-opener':
         specifier: ^2.5.3
         version: 2.5.3

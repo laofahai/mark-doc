@@ -5,9 +5,10 @@ import pluginReact from "eslint-plugin-react";
 import pluginReactHooks from "eslint-plugin-react-hooks";
 
 export default [
-  { ignores: ["dist/**", "node_modules/**", "*.min.js", "src-tauri/target/**"] },
+  { ignores: ["coverage/**", "dist/**", "node_modules/**", "*.min.js", "src-tauri/target/**"] },
   { files: ["**/*.{js,mjs,cjs,ts,jsx,tsx}"] },
   { languageOptions: { globals: globals.browser } },
+  { files: ["scripts/**/*.mjs"], languageOptions: { globals: globals.node } },
   pluginJs.configs.recommended,
   ...tseslint.configs.recommended,
   pluginReact.configs.flat.recommended,

@@ -1,9 +1,10 @@
 {
   "name": "mark-doc",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.2",
+  "packageManager": "pnpm@10.32.1",
   "type": "module",
-  "description": "Markdown + DOCX 双编辑器",
+  "description": "Desktop Markdown editor with MarkDoc packages and DOCX import/export",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -14,6 +15,9 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
+    "version:sync": "node scripts/sync-version.mjs",
+    "release:check": "node scripts/validate-release-config.mjs",
+    "ci": "pnpm run release:check && pnpm test && pnpm run lint && pnpm run build:check",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"
@@ -21,7 +25,6 @@
   "dependencies": {
     "@linch-tech/desktop-core": "^0.2.0",
     "@tauri-apps/api": "^2.9.5",
-    "@tauri-apps/plugin-dialog": "^2.6.0",
     "@tauri-apps/plugin-opener": "^2.5.3",
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-shell": "^2.3.5",

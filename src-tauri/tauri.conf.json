@@ -14,18 +14,25 @@
         "title": "MarkDoc",
         "width": 1200,
         "height": 800,
+        "minWidth": 900,
+        "minHeight": 640,
         "decorations": false,
         "transparent": false,
         "shadow": true
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["/tmp/markdoc/**", "/private/tmp/markdoc/**"]
+      }
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "resources": ["resources/*"],
     "icon": [
       "icons/32x32.png",
@@ -36,14 +43,24 @@
     ],
     "fileAssociations": [
       {
-        "ext": ["docx"],
+        "ext": ["mdoc"],
+        "mimeType": "application/vnd.markdoc.package",
+        "description": "MarkDoc Package"
+      },
+      {
+        "ext": ["docx", "doc"],
         "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "description": "Word Document"
       },
-{
+      {
         "ext": ["md", "markdown"],
         "mimeType": "text/markdown",
         "description": "Markdown Document"
+      },
+      {
+        "ext": ["txt"],
+        "mimeType": "text/plain",
+        "description": "Text Document"
       }
     ]
   },

@@ -1,16 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { writeFile } from '@tauri-apps/plugin-fs'
-import { createTemporaryWorkspace } from '../../document/workspace-service'
+import { describe, expect, it } from 'vitest'
 import {
-  AssetManager,
   containsBase64Images,
   findLocalAssetReferences,
   rewriteBase64ImageReferences,
 } from '../AssetManager'
 
-describe('AssetManager', () => {
-  beforeEach(() => vi.clearAllMocks())
-
+describe('asset markdown helpers', () => {
   it('detects local asset references without treating remote URLs as local assets', () => {
     const markdown = [
       '![local](assets/a.png)',
@@ -21,6 +16,25 @@ describe('AssetManager', () => {
       '<img src="images/b.jpg" alt="b">',
     ].join('\n')
     expect(findLocalAssetReferences(markdown)).toEqual(['assets/a.png', 'images/b.jpg'])
+  })
+
+  it('detects embedded style and html resources without treating plain links as package assets', () => {
+    const markdown = [
+      '[relative doc](notes/next.md)',
+      '<link rel="stylesheet" href="./styles/report.css">',
+      '<video src="media/demo.mp4" poster="images/poster.png"></video>',
+      '<div style="background-image: url(assets/background.png)">Cover</div>',
+      '<style>.hero { background: url("./images/hero.jpg"); }</style>',
+      '<script src="https://example.com/remote.js"></script>',
+    ].join('\n')
+
+    expect(findLocalAssetReferences(markdown)).toEqual([
+      './styles/report.css',
+      'media/demo.mp4',
+      'images/poster.png',
+      'assets/background.png',
+      './images/hero.jpg',
+    ])
   })
 
   it('detects base64 image persistence', () => {
@@ -47,19 +61,5 @@ describe('AssetManager', () => {
       '<img src="data:image/png;base64,AAAA" alt="html">',
       '![remote](https://example.com/a.png)',
     ].join('\n'))
-  })
-
-  it('imports bytes into workspace assets using relative markdown paths', async () => {
-    const workspace = createTemporaryWorkspace('/tmp/markdoc/doc-1', 'test')
-    const manager = new AssetManager(workspace)
-    const result = await manager.importBytes(new Uint8Array([1, 2, 3]), {
-      preferredName: 'Screenshot 1.png',
-      mimeType: 'image/png',
-    })
-    expect(result.ok).toBe(true)
-    if (result.ok) {
-      expect(result.value.markdownPath).toMatch(/^assets\/screenshot-1-[a-f0-9]{8}\.png$/)
-    }
-    expect(writeFile).toHaveBeenCalledOnce()
   })
 })

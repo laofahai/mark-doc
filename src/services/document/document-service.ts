@@ -1,5 +1,3 @@
-import { copyFile, mkdir, readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
-import { save } from '@tauri-apps/plugin-dialog'
 import { err, ok, type Result } from './errors'
 import type { DocumentSession } from './session-store'
 import { DocumentSessionStore } from './session-store'
@@ -11,6 +9,8 @@ import { PackageExporter } from '../exporters/PackageExporter'
 import type { DocumentModel, DocumentWorkspace } from './model'
 import { resolveSaveTarget } from './save-strategy'
 import { createTemporaryWorkspace } from './workspace-service'
+import { fileDialogLabels } from '../../locales/file-dialog-labels'
+import { copyFile, readTextFile, selectSavePath, writeTextFile } from '../native-file'
 
 export interface OpenDocumentResult extends DocumentSession {
   resourceSuggestion?: {
@@ -40,8 +40,8 @@ export class DocumentService {
     const session = this.sessions.get(imported.value.document.id)!
     return ok({
       ...session,
-      resourceSuggestion: imported.value.localResourceReferences.length > 0
-        ? { kind: 'suggest-mdoc', references: imported.value.localResourceReferences }
+      resourceSuggestion: imported.value.packageResourceReferences.length > 0
+        ? { kind: 'suggest-mdoc', references: imported.value.packageResourceReferences }
         : undefined,
     })
   }
@@ -53,7 +53,7 @@ export class DocumentService {
         const result = await this.packageImporter.open(path, this.nextWorkspaceRoot('package'))
         return result.ok ? ok({ document: result.value }) : result
       }
-      if (lower.endsWith('.docx')) {
+      if (lower.endsWith('.docx') || lower.endsWith('.doc')) {
         const result = await this.docxImporter.import(path, this.nextWorkspaceRoot('docx'))
         return result.ok ? ok({ document: result.value }) : result
       }
@@ -75,7 +75,7 @@ export class DocumentService {
 
       const defaultName = this.defaultSaveName(document, decision.defaultKind)
       const outputPath = decision.requiresDialog
-        ? await save({ filters: [{ name: 'MarkDoc Package', extensions: ['mdoc'] }, { name: 'Markdown', extensions: ['md'] }], defaultPath: defaultName })
+        ? await selectSavePath({ filters: [{ name: fileDialogLabels.markdocPackage(), extensions: ['mdoc'] }, { name: fileDialogLabels.markdown(), extensions: ['md'] }], defaultPath: defaultName })
         : document.source.type === 'package' ? document.source.packagePath : null
       if (!outputPath) return ok(null)
       if (outputPath.toLowerCase().endsWith('.md')) {
@@ -86,9 +86,9 @@ export class DocumentService {
       const packagePath = outputPath.toLowerCase().endsWith('.mdoc') ? outputPath : `${outputPath}.mdoc`
       const workspace = await this.ensurePackageWorkspace(document)
       const entry = this.packageEntryPath(document, workspace)
-      const files = this.packageFiles(document, entry)
+      const files = this.packageFiles(document, workspace, entry)
       const preservedFiles = document.source.type === 'package'
-        ? [...new Set((document.workspace.packageQuarantined ?? []).filter(path => this.isSafePackagePath(path)))].sort()
+        ? [...new Set((document.workspace.packageQuarantined ?? []).filter(path => this.isPackageContentPath(path, entry)))].sort()
         : []
       const exported = await this.packageExporter.export(workspace, {
         outputPath: packagePath,
@@ -97,6 +97,32 @@ export class DocumentService {
         manifest: document.workspace.packageManifest,
         sourcePackagePath: document.source.type === 'package' ? document.source.packagePath : undefined,
         preservedFiles,
+      })
+      if (!exported.ok) return exported
+      return ok({ ...document, source: { type: 'package', packagePath, extractedWorkspacePath: workspace.rootPath! }, workspace, dirty: { markdown: false, assets: false, presentation: false } })
+    } catch (cause) {
+      return err('save.failed', { messageKey: 'errors.save.failed', cause })
+    }
+  }
+
+  async saveDocumentAsPackage(document: DocumentModel): Promise<Result<DocumentModel | null>> {
+    try {
+      const defaultName = this.defaultSaveName(document, 'mdoc')
+      const outputPath = await selectSavePath({
+        filters: [{ name: fileDialogLabels.markdocPackage(), extensions: ['mdoc'] }],
+        defaultPath: defaultName,
+      })
+      if (!outputPath) return ok(null)
+
+      const packagePath = outputPath.toLowerCase().endsWith('.mdoc') ? outputPath : `${outputPath}.mdoc`
+      const workspace = await this.ensurePackageWorkspace(document)
+      const entry = this.packageEntryPath(document, workspace)
+      const files = this.packageFiles(document, workspace, entry)
+      const exported = await this.packageExporter.export(workspace, {
+        outputPath: packagePath,
+        entry,
+        files,
+        manifest: document.workspace.packageManifest,
       })
       if (!exported.ok) return exported
       return ok({ ...document, source: { type: 'package', packagePath, extractedWorkspacePath: workspace.rootPath! }, workspace, dirty: { markdown: false, assets: false, presentation: false } })
@@ -122,7 +148,7 @@ export class DocumentService {
     const sourcePath = document.source.type === 'markdown' ? document.source.path
       : document.source.type === 'package' ? document.source.packagePath
         : document.source.type === 'docx' ? document.source.originalPath : 'untitled'
-    return sourcePath.split('/').pop()!.replace(/\.(md|mdoc|docx)$/i, '') + `.${kind === 'markdown' ? 'md' : kind}`
+    return sourcePath.split('/').pop()!.replace(/\.(md|markdown|mdoc|txt|docx|doc)$/i, '') + `.${kind === 'markdown' ? 'md' : kind}`
   }
 
   private async ensurePackageWorkspace(document: DocumentModel): Promise<DocumentWorkspace> {
@@ -135,23 +161,25 @@ export class DocumentService {
         entryPath: `${rootPath}/${entry}`,
         storage: { type: 'temporary' as const, rootPath, recoveryKey: document.id },
       }
-      await mkdir(rootPath, { recursive: true })
       await writeTextFile(workspace.entryPath, document.markdown)
       return workspace
     }
 
     const rootPath = this.nextWorkspaceRoot('save')
     const workspace = createTemporaryWorkspace(rootPath, document.id)
-    await mkdir(rootPath, { recursive: true })
     await writeTextFile(workspace.entryPath, document.markdown)
+    const copiedReferences: string[] = []
     for (const reference of document.assets.references.filter(path => this.isSafePackagePath(path))) {
       if (!document.workspace.rootPath) continue
       const targetPath = `${rootPath}/${reference}`
-      const parent = targetPath.slice(0, targetPath.lastIndexOf('/'))
-      if (parent) await mkdir(parent, { recursive: true })
-      await copyFile(`${document.workspace.rootPath}/${reference}`, targetPath)
+      try {
+        await copyFile(`${document.workspace.rootPath}/${reference}`, targetPath)
+        copiedReferences.push(reference)
+      } catch {
+        // Missing local resources should not prevent the package from preserving document.md.
+      }
     }
-    return workspace
+    return { ...workspace, packageEntries: ['document.md', ...copiedReferences] }
   }
 
   private packageEntryPath(document: DocumentModel, workspace: Pick<DocumentModel['workspace'], 'entryPath' | 'rootPath' | 'packageManifest'>) {
@@ -164,11 +192,18 @@ export class DocumentService {
     return 'document.md'
   }
 
-  private packageFiles(document: DocumentModel, entry: string) {
-    const candidates = document.source.type === 'package' && document.workspace.packageEntries?.length
-      ? document.workspace.packageEntries
+  private packageFiles(document: DocumentModel, workspace: DocumentWorkspace, entry: string) {
+    const candidates = workspace.packageEntries?.length
+      ? [entry, ...workspace.packageEntries, ...(document.source.type === 'package' ? document.assets.references : [])]
       : [entry, ...document.assets.references]
-    return [...new Set(candidates.filter(path => this.isSafePackagePath(path)))].sort()
+    return [...new Set(candidates.filter(path => this.isPackageContentPath(path, entry)))].sort()
+  }
+
+  private isPackageContentPath(path: string, entry: string) {
+    if (!this.isSafePackagePath(path)) return false
+    if (path === 'manifest.json') return false
+    if (path === 'README.md' && path !== entry) return false
+    return true
   }
 
   private isSafePackagePath(path: string) {

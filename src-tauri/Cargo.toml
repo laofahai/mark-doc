@@ -1,7 +1,7 @@
 [package]
 name = "mark-doc"
-version = "0.1.0"
-description = "Markdown + DOCX 双编辑器"
+version = "0.1.2"
+description = "Desktop Markdown editor with MarkDoc packages and DOCX import/export"
 authors = ["MarkDoc Team"]
 edition = "2021"
 
@@ -14,7 +14,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 linch_tech_desktop_core = "0.2"
-tauri = { version = "2.9", features = [] }
+tauri = { version = "2.9", features = ["protocol-asset"] }
 tauri-plugin-fs = { version = "2.4", features = ["watch"] }
 tauri-plugin-opener = "2.5"
 tauri-plugin-dialog = "2.6"

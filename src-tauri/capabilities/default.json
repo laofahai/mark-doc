@@ -11,31 +11,20 @@
     "core:window:allow-close",
     "core:window:allow-set-title",
     "shell:default",
-    "dialog:default",
     "opener:default",
     {
-      "identifier": "fs:allow-read-text-file",
-      "allow": [{ "path": "**" }]
-    },
-    {
-      "identifier": "fs:allow-read-dir",
-      "allow": [{ "path": "**" }]
-    },
-    {
-      "identifier": "fs:allow-write-text-file",
-      "allow": [{ "path": "**" }]
-    },
-    {
-      "identifier": "fs:allow-write-file",
-      "allow": [{ "path": "**" }]
-    },
-    {
-      "identifier": "fs:allow-remove",
-      "allow": [{ "path": "**" }]
-    },
-    {
       "identifier": "fs:allow-watch",
-      "allow": [{ "path": "**" }]
+      "allow": [
+        { "path": "$TEMP/markdoc" },
+        { "path": "$TEMP/markdoc/*" },
+        { "path": "$TEMP/markdoc/**/*" },
+        { "path": "/tmp/markdoc" },
+        { "path": "/tmp/markdoc/*" },
+        { "path": "/tmp/markdoc/**/*" },
+        { "path": "/private/tmp/markdoc" },
+        { "path": "/private/tmp/markdoc/*" },
+        { "path": "/private/tmp/markdoc/**/*" }
+      ]
     },
     {
       "identifier": "fs:allow-unwatch"

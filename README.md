@@ -1,226 +1,137 @@
 # MarkDoc
 
-**A modern document editor with Markdown at its core.**
+`.mdoc`-first desktop document editing for Markdown, images, and Word handoff.
 
-![Version](https://img.shields.io/badge/version-0.1.2-blue.svg)
+[Website](https://linch.tech/zh/products/mark-doc) | [中文](README.zh-CN.md)
+
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)
 
-[Website](https://linch.tech/zh/products/mark-doc)
+MarkDoc's main file format is `.mdoc`. A `.mdoc` file is a portable document
+package: clean Markdown stays at the center, while images, Word export
+templates, and presentation resources travel with it in the same file.
 
-## Features
+Plain Markdown still works when a document is only text. Word import/export is
+there for DOCX handoff, not as the product's storage model.
 
-- **WYSIWYG Markdown editing** -- powered by Vditor with custom Lucide toolbar icons
-- **MarkDoc documents (`.mdoc`)** -- package clean Markdown, assets, and presentation resources into one portable file
-- **Bidirectional DOCX conversion** -- seamless Markdown to Word and Word to Markdown via Pandoc
-- **Template-based export** -- export DOCX with built-in template, original style, or custom reference.docx
-- **Built-in Chinese document template** -- Heiti headings, Songti body text, 1.5x line spacing, A4 layout
-- **Mermaid diagram export** -- diagrams are rendered to PNG images during DOCX export
-- **Clean asset import** -- DOCX images are stored as files and referenced by portable relative Markdown paths
-- **Multi-tab editing** -- open multiple files with unsaved changes confirmation
-- **File tree sidebar** -- browse files with real-time folder watching, drill-in/drill-out navigation
-- **File association** -- register as handler for `.md` and `.docx` files on macOS/Windows
-- **External change detection** -- prompt to reload when files are modified by other applications
-- **i18n** -- Chinese and English UI, with Vditor editor language sync
-- **Dark and light themes** -- switch appearance via settings
-- **Keyboard shortcuts** -- Cmd+S save, Cmd+N new, Cmd+O open, Cmd+W close, Ctrl+Tab switch tabs
-- **Zoom and layout** -- adjustable page width (normal/wide/full), Ctrl+scroll zoom, word count
-- **Settings dialog** -- configure language, theme, and document export template
+## What It Does
 
-`.mdoc` files are ordinary ZIP packages. `manifest.json` is the authority for
-the format (`format`, `version`, `entry`, `schema`, and `spec`); `manifest.entry`
-names the canonical Markdown source. A packaged README may help humans and AI
-tools orient themselves, but importers must validate the manifest.
+- Edit `.mdoc` documents backed by clean Markdown.
+- Keep text, images, templates, and presentation resources in one file.
+- Edit Markdown in a WYSIWYG desktop editor.
+- Open `.md`, `.markdown`, `.txt`, `.mdoc`, `.docx`, and `.doc` files.
+- Keep plain text documents as normal Markdown or text files.
+- Save resource-heavy documents as one `.mdoc` file instead of leaving loose
+  asset folders beside Markdown.
+- Import Word documents into editable Markdown.
+- Export the current document to DOCX.
+- Use a built-in Word style template or your own `reference.docx`.
+- Work with tabs, a file sidebar, a document outline, light/dark themes, and
+  Chinese/English UI.
+- Check for app updates from Settings in desktop builds.
 
-## Screenshots
+## Basic Use
 
-<!-- Add screenshots here -->
+Install the desktop build for your system from
+[GitHub Releases](https://github.com/laofahai/mark-doc/releases), then:
 
-## Tech Stack
+1. Open an existing document or create a new one.
+2. Write in the editor. The toolbar formats Markdown without forcing you into
+   raw syntax.
+3. Save as `.mdoc` for normal MarkDoc work, especially when the document has
+   images, imported assets, templates, or presentation resources.
+4. Save as plain Markdown only when the document is text-only and you explicitly
+   want a normal `.md` file.
+5. Export DOCX when the file needs to be reviewed or delivered in Word.
 
-| Layer       | Technology                                          |
-|-------------|-----------------------------------------------------|
-| Framework   | Tauri v2 (Rust backend)                             |
-| Frontend    | React 19, TypeScript                                |
-| Editor      | Vditor                                              |
-| Styling     | Tailwind CSS 4                                      |
-| Build       | Vite 7                                              |
-| Conversion  | Pandoc (system dependency)                          |
-| Platform    | @linch-tech/desktop-core                            |
+## Which File Type Should I Use?
 
-## Prerequisites
+| Format | Use It For | Notes |
+| --- | --- | --- |
+| `.md`, `.markdown` | Text-first Markdown documents | Best when images and templates are not part of the file. |
+| `.txt` | Plain text notes | Opens as editable text. |
+| `.mdoc` | Markdown plus bundled images/templates/resources | A single portable package for richer documents. |
+| `.docx`, `.doc` | Word documents you need to import | Converted through Pandoc before editing. |
 
-- **Node.js** >= 18
-- **pnpm** >= 8
-- **Rust** >= 1.77
-- **Pandoc** -- required for DOCX conversion. The app will guide you through installation if not detected.
-  - macOS: `brew install pandoc`
-  - Windows: `winget install -e --id JohnMacFarlane.Pandoc`
-  - Linux: `sudo apt install pandoc`
+## What Is `.mdoc`?
 
-## Getting Started
+A `.mdoc` file is a ZIP package, not a normal `.md` file. It contains a
+`manifest.json`, a Markdown entry file, and optional assets.
+
+MarkDoc writes these stable package paths:
+
+- `manifest.json`
+- `document.md`
+- `README.md`
+- `assets/`
+- `presentation/`
+
+External tools and AI agents can read `.mdoc` without installing MarkDoc:
+
+1. Unzip the file.
+2. Validate `manifest.json`.
+3. Read `manifest.entry` as the canonical Markdown source.
+4. Resolve images and other resources relative to the package root.
+
+The package `README.md` is only a hint for humans and AI tools. The manifest is
+the source of truth.
+
+Full format spec: [docs/spec/markdoc-package-v1.md](docs/spec/markdoc-package-v1.md)
+
+## Word Conversion
+
+DOCX and `.doc` import/export require Pandoc.
+
+MarkDoc converts Word files into Markdown workspaces and extracts referenced
+images as local assets. Export creates a new DOCX from the current Markdown
+document.
+
+MarkDoc is not a full Word layout engine. Complex Word formatting, embedded
+objects, and exact visual layout may not round-trip perfectly.
+
+## Requirements
+
+- Node.js 20.19+ if running from source.
+- `pnpm`; this repository pins `pnpm@10.32.1`.
+- Rust stable toolchain if running the desktop app from source.
+- Pandoc for Word import/export.
+
+Pandoc examples:
 
 ```bash
-# Install dependencies
+brew install pandoc
+winget install -e --id JohnMacFarlane.Pandoc
+sudo apt install pandoc
+```
+
+## Run From Source
+
+```bash
 pnpm install
+pnpm tauri:dev
+```
 
-# Run in development mode (desktop app)
-npx tauri dev
+Renderer-only development:
 
-# Run frontend only
+```bash
 pnpm dev
 ```
 
-## Building
+Checks:
 
 ```bash
-# Build the Tauri desktop application
-npx tauri build
+pnpm test
+pnpm run lint
+pnpm run build:check
 ```
 
-Build artifacts:
+Tauri/Rust tests:
 
-- macOS: `src-tauri/target/release/bundle/macos/MarkDoc.app` and `.dmg`
-- Windows/Linux: corresponding directories under `src-tauri/target/release/bundle/`
-
-## Project Structure
-
-```
-mark-doc/
-├── src/                        # Frontend source code
-│   ├── components/             # React components
-│   │   ├── Editor/             # Vditor editor integration
-│   │   ├── Sidebar.tsx         # File tree with drill-in/out
-│   │   ├── ExportDocxDialog.tsx
-│   │   ├── CloseConfirmDialog.tsx
-│   │   ├── SettingsDialog.tsx
-│   │   └── PandocGuard.tsx     # Pandoc installation guard
-│   ├── contexts/               # FileContext (tabs, file ops)
-│   ├── locales/                # i18n resources (zh, en)
-│   ├── pages/                  # EditorPage
-│   └── services/               # File I/O, export preprocessing
-├── src-tauri/                  # Tauri / Rust backend
-│   ├── src/
-│   │   ├── converter.rs        # Pandoc conversion, image embedding
-│   │   └── lib.rs              # App entry, file association handling
-│   ├── resources/
-│   │   └── reference.docx      # Built-in document template
-│   └── tauri.conf.json
-└── package.json
+```bash
+cd src-tauri
+cargo test
 ```
 
 ## License
 
-MIT License -- see [LICENSE](LICENSE) for details.
-
----
-
-# MarkDoc
-
-**以 Markdown 为核心的现代文档编辑器。**
-
-[官网](https://linch.tech/zh/products/mark-doc)
-
-## 功能特性
-
-- **所见即所得 Markdown 编辑** -- 基于 Vditor，自定义 Lucide 工具栏图标
-- **MarkDoc 文档（`.mdoc`）** -- 将干净的 Markdown、资源和演示资源打包为一个可移植文件
-- **双向 DOCX 转换** -- 通过 Pandoc 实现 Markdown 与 Word 文档无缝互转
-- **模板化导出** -- 导出 DOCX 时可选内置模板、保留原样式或自定义模板
-- **中文正式文档模板** -- 内置模板：黑体标题、宋体正文、1.5 倍行距、A4 版面
-- **Mermaid 图表导出** -- 导出 DOCX 时自动将 Mermaid 图表渲染为 PNG
-- **干净资源导入** -- DOCX 图片保存为文件，并由可移植的相对 Markdown 路径引用
-- **多标签页编辑** -- 同时打开多个文件，关闭未保存文件时提示确认
-- **文件树侧边栏** -- 实时目录监听，支持上钻/下钻导航
-- **文件类型关联** -- 在 macOS/Windows 注册为 .md 和 .docx 的打开方式
-- **外部修改检测** -- 其他应用修改文件后提示是否重新加载
-- **国际化** -- 中文/英文界面，Vditor 编辑器语言同步切换
-- **亮色/暗色主题** -- 在设置中切换界面外观
-- **快捷键** -- Cmd+S 保存、Cmd+N 新建、Cmd+O 打开、Cmd+W 关闭、Ctrl+Tab 切换标签
-- **缩放与排版** -- 页面宽度调节（标准/宽屏/全宽）、Ctrl+滚轮缩放、字数统计
-- **设置对话框** -- 配置语言、主题和文档导出模板
-
-`.mdoc` 文件是普通 ZIP 包。`manifest.json` 是格式的权威定义，包含
-`format`、`version`、`entry`、`schema` 和 `spec`；`manifest.entry` 指向规范
-Markdown 源。包内 README 可帮助用户和 AI 工具了解文件，但导入器必须校验清单。
-
-## 截图
-
-<!-- 在此添加截图 -->
-
-## 技术栈
-
-| 层级     | 技术                                                 |
-|----------|------------------------------------------------------|
-| 框架     | Tauri v2（Rust 后端）                                |
-| 前端     | React 19、TypeScript                                 |
-| 编辑器   | Vditor                                               |
-| 样式     | Tailwind CSS 4                                       |
-| 构建     | Vite 7                                               |
-| 文档转换 | Pandoc（系统依赖）                                   |
-| 基座     | @linch-tech/desktop-core                             |
-
-## 环境要求
-
-- **Node.js** >= 18
-- **pnpm** >= 8
-- **Rust** >= 1.77
-- **Pandoc** -- DOCX 转换必要依赖，未检测到时应用会引导安装
-  - macOS：`brew install pandoc`
-  - Windows：`winget install -e --id JohnMacFarlane.Pandoc`
-  - Linux：`sudo apt install pandoc`
-
-## 快速开始
-
-```bash
-# 安装依赖
-pnpm install
-
-# 以开发模式运行桌面应用
-npx tauri dev
-
-# 仅运行前端
-pnpm dev
-```
-
-## 构建
-
-```bash
-# 构建 Tauri 桌面应用
-npx tauri build
-```
-
-构建产物：
-
-- macOS：`src-tauri/target/release/bundle/macos/MarkDoc.app` 和 `.dmg`
-- Windows/Linux：`src-tauri/target/release/bundle/` 下对应目录
-
-## 项目结构
-
-```
-mark-doc/
-├── src/                        # 前端源代码
-│   ├── components/             # React 组件
-│   │   ├── Editor/             # Vditor 编辑器集成
-│   │   ├── Sidebar.tsx         # 文件树（上钻/下钻）
-│   │   ├── ExportDocxDialog.tsx
-│   │   ├── CloseConfirmDialog.tsx
-│   │   ├── SettingsDialog.tsx
-│   │   └── PandocGuard.tsx     # Pandoc 安装引导
-│   ├── contexts/               # FileContext（标签页、文件操作）
-│   ├── locales/                # 国际化资源（zh、en）
-│   ├── pages/                  # EditorPage
-│   └── services/               # 文件 I/O、导出预处理
-├── src-tauri/                  # Tauri / Rust 后端
-│   ├── src/
-│   │   ├── converter.rs        # Pandoc 转换、图片内嵌
-│   │   └── lib.rs              # 应用入口、文件关联处理
-│   ├── resources/
-│   │   └── reference.docx      # 内置文档模板
-│   └── tauri.conf.json
-└── package.json
-```
-
-## 许可证
-
-MIT License -- 详见 [LICENSE](LICENSE) 文件。
+MIT License. See [LICENSE](LICENSE).

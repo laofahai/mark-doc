@@ -1,16 +1,15 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import Editor from '../components/Editor/Editor'
-import type { EditorToolbarActions } from '../components/Editor/EditorToolbarOverlay'
 import { CloseConfirmDialog } from '../components/CloseConfirmDialog'
-import { ExportDocxDialog, type TemplateChoice } from '../components/ExportDocxDialog'
 import { RecoveryPanel } from '../components/RecoveryPanel'
 import { PackageSecurityPanel } from '../components/PackageSecurityPanel'
-import { saveAsMarkdown, saveFile, convertMdToDocx } from '../services/file'
-import { open } from '@tauri-apps/plugin-dialog'
-import { useFile, type FileTab } from '../contexts/FileContext'
+import { resolveWorkspacePath } from '../services/document/workspace-service'
+import { exportMarkdownFile } from '../services/document/markdown-export'
+import { convertFileSrc } from '@tauri-apps/api/core'
 import { useDocument } from '../contexts/DocumentContext'
 import type { DocumentTab } from '../contexts/DocumentContext'
 import type { DocumentSaveStatus } from '../contexts/DocumentContext'
+import type { DocumentEditorAdapter } from '../components/Editor/editor-adapter'
 import { X, FileText, Globe } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -35,110 +34,51 @@ function getPlainTextLength(md: string): number {
 
 type PageWidth = 'normal' | 'wide' | 'full'
 const PAGE_WIDTH_CLASS = { normal: 'max-w-[800px]', wide: 'max-w-[1100px]', full: '' }
-type VisibleTab = {
-  kind: 'file' | 'document'
-  id: string
-  name: string
-  isDirty: boolean
-}
 
 interface Props {
   pageWidth: PageWidth
-  onPageWidthChange: (w: PageWidth) => void
 }
 
-export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
+export function EditorPage({ pageWidth }: Props) {
   const { t } = useTranslation()
-  const file = useFile()
   const documentContext = useDocument()
-  const { tabs, activeTab, activeTabId, setTabContent, markTabSaved, closeTab, switchTab, clearActiveTab, externalChange, reloadTab, dismissExternalChange } = file
-  const [, setSaving] = useState(false)
   const [zoom, setZoom] = useState(100)
-  const [closeConfirm, setCloseConfirm] = useState<{ kind: 'file' | 'document'; id: string; name: string } | null>(null)
-  const [exportDocxOpen, setExportDocxOpen] = useState(false)
+  const [closeConfirm, setCloseConfirm] = useState<{ id: string; name: string } | null>(null)
   const editorAreaRef = useRef<HTMLDivElement>(null)
   const activeDocument = documentContext.activeDocument
-  const activeDocumentTab = documentContext.tabs.find(tab => tab.id === documentContext.activeTabId) || null
-  const content = activeDocument?.markdown ?? activeTab?.content ?? ''
-  const visibleTabs = useMemo(() => [
-    ...documentContext.tabs.map(tab => ({
-      kind: 'document' as const,
-      id: tab.id,
-      name: tab.name,
-      isDirty: tab.isDirty,
-    })),
-    ...tabs.map(tab => ({
-      kind: 'file' as const,
-      id: tab.id,
-      name: tab.name,
-      isDirty: tab.isDirty,
-    })),
-  ], [documentContext.tabs, documentContext.activeTabId, activeDocument, tabs])
-  const activeVisibleTabKey = activeDocument
-    ? `document:${documentContext.activeTabId}`
-    : activeTabId
-      ? `file:${activeTabId}`
-      : null
-
-  const switchDocumentVisibleTab = useCallback((id: string) => {
-    clearActiveTab()
-    documentContext.switchDocumentTab(id)
-  }, [clearActiveTab, documentContext])
-
-  const switchFileVisibleTab = useCallback((id: string) => {
-    documentContext.clearActiveDocument()
-    switchTab(id)
-  }, [documentContext, switchTab])
-
-  const activateFallbackAfterClose = useCallback((tab: VisibleTab) => {
-    if (`${tab.kind}:${tab.id}` !== activeVisibleTabKey) return
-
-    if (tab.kind === 'document') {
-      const nextDocument = documentContext.tabs.find(candidate => candidate.id !== tab.id)
-      if (nextDocument) return
-      const nextFile = tabs[0]
-      if (nextFile) switchFileVisibleTab(nextFile.id)
-      return
-    }
-
-    const nextFile = tabs.find(candidate => candidate.id !== tab.id)
-    if (nextFile) return
-    const nextDocument = documentContext.tabs[0]
-    if (nextDocument) switchDocumentVisibleTab(nextDocument.id)
-  }, [activeVisibleTabKey, documentContext.tabs, tabs, switchDocumentVisibleTab, switchFileVisibleTab])
+  const activeDocumentId = activeDocument?.id ?? null
+  const registerDocumentEditor = documentContext.registerDocumentEditor
+  const content = activeDocument?.markdown ?? ''
+  const visibleTabs = documentContext.tabs
+  const activeVisibleTabKey = documentContext.activeTabId
 
   const createNewDocument = useCallback(() => {
-    clearActiveTab()
     documentContext.createNewDocument()
-  }, [clearActiveTab, documentContext])
+  }, [documentContext])
 
   const openDocumentDialog = useCallback(async () => {
-    const path = await open({
-      filters: [
-        { name: 'MarkDoc Package', extensions: ['mdoc'] },
-        { name: 'Markdown', extensions: ['md'] },
-        { name: 'Word', extensions: ['docx'] },
-      ],
-    })
-    if (!path) return
-    const filePath = path as string
-    clearActiveTab()
-    await documentContext.openFileFromPath(filePath, filePath.split('/').pop() || 'untitled')
-  }, [clearActiveTab, documentContext])
-
-  useEffect(() => {
-    if (activeTabId && activeDocument) {
-      documentContext.clearActiveDocument()
-    }
-  }, [activeTabId, activeDocument, documentContext])
+    await documentContext.openFileDialog()
+  }, [documentContext])
 
   const handleContentChange = useCallback((md: string) => {
-    if (activeDocument) {
-      documentContext.setActiveMarkdown(md)
-      return
-    }
-    setTabContent(md)
-  }, [activeDocument, documentContext, setTabContent])
+    documentContext.setActiveMarkdown(md)
+  }, [documentContext])
+
+  const handleEditorReady = useCallback((adapter: DocumentEditorAdapter) => {
+    if (!activeDocumentId) return
+    registerDocumentEditor(activeDocumentId, adapter)
+  }, [activeDocumentId, registerDocumentEditor])
+
+  useEffect(() => {
+    if (!activeDocumentId) return
+    return () => registerDocumentEditor(activeDocumentId, null)
+  }, [activeDocumentId, registerDocumentEditor])
+
+  const resolveActiveAssetUrl = useCallback((relativePath: string) => {
+    if (!activeDocument) return null
+    const resolved = resolveWorkspacePath(activeDocument.workspace, relativePath)
+    return resolved.ok ? convertFileSrc(resolved.value) : null
+  }, [activeDocument?.workspace])
 
   const saveDocumentTab = useCallback(async (tab: DocumentTab | null): Promise<DocumentSaveStatus> => {
     return tab ? documentContext.saveDocumentTab(tab.id) : 'failed'
@@ -148,133 +88,39 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
     if (!tab) return false
     const document = documentContext.getDocumentForTab(tab.id)
     if (!document) return false
-    return Boolean(await saveAsMarkdown(document.markdown, tab.name.replace(/\.mdoc$/i, '.md') || 'untitled.md'))
-  }, [documentContext])
+    return exportMarkdownFile({
+      sourceName: tab.name,
+      markdown: document.markdown,
+      filterName: t('fileFilters.markdown'),
+    })
+  }, [documentContext, t])
 
-  const saveFileTab = useCallback(async (tab: FileTab | null): Promise<DocumentSaveStatus> => {
-    if (!tab) return 'failed'
-    if (tab.path) {
-      const ok = await saveFile(tab.path, tab.content, tab.referenceDocxPath)
-      if (ok) markTabSaved(tab.id)
-      return ok ? 'saved' : 'failed'
-    }
-    const meta = await saveAsMarkdown(tab.content, tab.name)
-    if (!meta) return 'cancelled'
-    markTabSaved(tab.id, meta.path, meta.name, meta.sourceType)
-    return 'saved'
-  }, [markTabSaved])
-
-  const saveVisibleTab = useCallback(async (tab: VisibleTab) => {
-    if (tab.kind === 'document') {
-      const documentTab = documentContext.tabs.find(candidate => candidate.id === tab.id) || null
-      return saveDocumentTab(documentTab)
-    }
-    const fileTab = tabs.find(candidate => candidate.id === tab.id) || null
-    return saveFileTab(fileTab)
-  }, [documentContext.tabs, saveDocumentTab, saveFileTab, tabs])
+  const saveVisibleTab = useCallback(async (tab: DocumentTab) => {
+    return saveDocumentTab(tab)
+  }, [saveDocumentTab])
 
   const handleSave = useCallback(async () => {
-    if (activeDocument) {
-      setSaving(true)
-      try {
-        await documentContext.saveActiveDocument()
-      } finally { setSaving(false) }
-      return
-    }
+    if (!activeDocument) return
+    await documentContext.saveActiveDocument()
+  }, [activeDocument, documentContext])
 
-    if (!activeTab || !activeTabId) return
-    setSaving(true)
-    try {
-      await saveFileTab(activeTab)
-    } finally { setSaving(false) }
-  }, [activeDocument, activeTab, activeTabId, documentContext, saveFileTab])
+  const switchVisibleTab = useCallback((tab: { id: string }) => {
+    documentContext.switchDocumentTab(tab.id)
+  }, [documentContext])
 
-  const handleExportMd = useCallback(async () => {
-    if (activeDocument) {
-      setSaving(true)
-      try {
-        await exportDocumentMarkdown(activeDocumentTab)
-      } finally { setSaving(false) }
-      return
-    }
+  const closeVisibleTab = useCallback((tab: DocumentTab) => {
+    documentContext.closeDocumentTab(tab.id)
+  }, [documentContext])
 
-    if (!activeTab || !activeTabId) return
-    setSaving(true)
-    try {
-      const meta = await saveAsMarkdown(content, activeTab.name || 'untitled')
-      if (meta) markTabSaved(activeTabId, meta.path, meta.name, meta.sourceType)
-    } finally { setSaving(false) }
-  }, [activeDocument, activeDocumentTab, content, activeTab, activeTabId, markTabSaved, exportDocumentMarkdown])
-
-  /** 导出 docx，模板和保存路径已由弹窗确定 */
-  const handleExportDocxWithTemplate = useCallback(async (choice: TemplateChoice, outputPath: string) => {
-    if (!activeDocument && (!activeTab || !activeTabId)) return
-    setSaving(true)
-    try {
-      let refPath: string | undefined
-      if (activeDocument && choice.type === 'original') {
-        refPath = activeDocument.presentation.docx?.referenceDocx
-      } else if (!activeDocument && choice.type === 'original') {
-        refPath = activeTab?.referenceDocxPath
-      } else if (choice.type === 'custom') {
-        refPath = choice.path
-      }
-      if (activeDocument) {
-        await documentContext.exportActiveDocx(outputPath, refPath)
-        return
-      }
-      const ok = await convertMdToDocx(content, outputPath, refPath)
-      if (ok && !activeDocument && activeTabId) {
-        const name = outputPath.split('/').pop() || 'untitled.docx'
-        markTabSaved(activeTabId, outputPath, name, 'docx')
-      }
-    } catch (err) {
-      console.error('Export docx failed:', err)
-      alert(String(err))
-    } finally { setSaving(false) }
-  }, [activeDocument, content, activeTab, activeTabId, markTabSaved, documentContext])
-
-  const switchVisibleTab = useCallback((tab: { kind: 'file' | 'document'; id: string }) => {
-    if (tab.kind === 'document') {
-      switchDocumentVisibleTab(tab.id)
-      return
-    }
-    switchFileVisibleTab(tab.id)
-  }, [switchDocumentVisibleTab, switchFileVisibleTab])
-
-  const closeVisibleTab = useCallback((tab: VisibleTab) => {
-    activateFallbackAfterClose(tab)
-    if (tab.kind === 'document') {
-      documentContext.closeDocumentTab(tab.id)
-      return
-    }
-    closeTab(tab.id)
-  }, [activateFallbackAfterClose, closeTab, documentContext])
-
-  const handleCloseVisibleTab = useCallback((tab: VisibleTab) => {
+  const handleCloseVisibleTab = useCallback((tab: DocumentTab) => {
     if (tab.isDirty) {
-      setCloseConfirm({ kind: tab.kind, id: tab.id, name: tab.name })
+      setCloseConfirm({ id: tab.id, name: tab.name })
       return
     }
     closeVisibleTab(tab)
   }, [closeVisibleTab])
 
   const handleOpenFolder = () => window.dispatchEvent(new CustomEvent('mark-doc:open-folder'))
-
-  const editorActions: EditorToolbarActions = useMemo(() => ({
-    onNew: createNewDocument,
-    onSave: handleSave,
-    onExportMd: handleExportMd,
-    onExportDocx: () => setExportDocxOpen(true),
-    onOpen: openDocumentDialog,
-    onOpenFolder: handleOpenFolder,
-    pageWidth,
-    onPageWidthChange,
-    recentFiles: file.recentFiles,
-    openFileFromPath: (path, name) => { clearActiveTab(); void documentContext.openFileFromPath(path, name) },
-    removeRecentFile: file.removeRecentFile,
-    clearRecentFiles: file.clearRecentFiles,
-  }), [createNewDocument, handleSave, handleExportMd, file, documentContext, clearActiveTab, openDocumentDialog, pageWidth, onPageWidthChange])
 
   // Ctrl+滚轮缩放
   useEffect(() => {
@@ -293,7 +139,7 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
   // 切换到下/上一个标签
   const switchToNextTab = useCallback((direction: 1 | -1) => {
     if (visibleTabs.length < 2 || !activeVisibleTabKey) return
-    const idx = visibleTabs.findIndex(tab => `${tab.kind}:${tab.id}` === activeVisibleTabKey)
+    const idx = visibleTabs.findIndex(tab => tab.id === activeVisibleTabKey)
     const next = visibleTabs[(idx + direction + visibleTabs.length) % visibleTabs.length]
     switchVisibleTab(next)
   }, [visibleTabs, activeVisibleTabKey, switchVisibleTab])
@@ -313,7 +159,7 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
       if (e.key === 's') { e.preventDefault(); handleSave() }
       if (e.key === 'w' && activeVisibleTabKey) {
         e.preventDefault()
-        const active = visibleTabs.find(tab => `${tab.kind}:${tab.id}` === activeVisibleTabKey)
+        const active = visibleTabs.find(tab => tab.id === activeVisibleTabKey)
         if (active) handleCloseVisibleTab(active)
       }
       if (e.key === 'n') { e.preventDefault(); createNewDocument() }
@@ -326,13 +172,6 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
   return (
     <div className="flex flex-col h-full overflow-hidden relative">
       {/* 外部文件变化提示 */}
-      {externalChange && (
-        <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border-b border-amber-500/30 text-sm shrink-0">
-          <span className="flex-1 text-foreground">{t('editor.externalChange', { fileName: externalChange.name })}</span>
-          <button className="px-2.5 py-1 rounded text-xs bg-amber-500 text-white hover:bg-amber-600 border-none cursor-pointer" onClick={() => reloadTab(externalChange.tabId)}>{t('editor.reload')}</button>
-          <button className="px-2.5 py-1 rounded text-xs bg-transparent text-muted-foreground hover:text-foreground border border-border cursor-pointer" onClick={dismissExternalChange}>{t('editor.ignore')}</button>
-        </div>
-      )}
       {documentContext.activeExternalChange && (
         <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border-b border-amber-500/30 text-sm shrink-0">
           <span className="flex-1 text-foreground">{t('editor.externalChange', { fileName: documentContext.activeExternalChange.name })}</span>
@@ -349,6 +188,7 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
       {documentContext.resourceSuggestion && (
         <div className="flex items-center gap-2 px-4 py-2 bg-primary/10 border-b border-primary/30 text-sm shrink-0">
           <span className="flex-1 text-foreground">{t('document.suggestPackage')}</span>
+          <button className="px-2.5 py-1 rounded text-xs bg-primary text-primary-foreground hover:bg-primary/90 border-none cursor-pointer" onClick={() => void documentContext.saveActiveDocumentAsPackage()}>{t('document.saveAsMarkDoc')}</button>
           <button className="px-2.5 py-1 rounded text-xs bg-transparent text-muted-foreground hover:text-foreground border border-border cursor-pointer" onClick={documentContext.dismissResourceSuggestion}>{t('common.done')}</button>
         </div>
       )}
@@ -363,6 +203,7 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
       )}
       <PackageSecurityPanel
         quarantined={documentContext.activeDocument?.workspace.packageQuarantined ?? []}
+        recovered={documentContext.activeDocument?.workspace.packageRecovered ?? false}
         onTrustDocument={documentContext.trustActiveDocument}
         onAllowResourceType={documentContext.allowActiveRemoteResourceType}
         onAllowDomain={documentContext.allowActiveRemoteDomain}
@@ -373,9 +214,9 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
         <div className="flex items-center border-b border-border shrink-0 px-1 h-9">
           <div className="flex-1 flex items-center overflow-x-auto no-scrollbar">
             {visibleTabs.map(tab => (
-              <div key={`${tab.kind}:${tab.id}`}
+              <div key={tab.id}
                 className={`group flex items-center gap-1 px-2.5 py-1.5 text-[11px] cursor-pointer shrink-0 max-w-[150px] rounded-md transition-colors ${
-                  `${tab.kind}:${tab.id}` === activeVisibleTabKey ? 'text-foreground bg-accent' : 'text-muted-foreground/50 hover:text-muted-foreground'
+                  tab.id === activeVisibleTabKey ? 'text-foreground bg-accent' : 'text-muted-foreground/50 hover:text-muted-foreground'
                 }`}
                 onClick={() => switchVisibleTab(tab)}>
                 <FileText size={11} className="shrink-0" />
@@ -392,16 +233,18 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
 
       {/* 编辑区 */}
       <div ref={editorAreaRef} className="flex-1 overflow-y-auto overflow-x-hidden relative">
-        {activeTab || documentContext.activeDocument ? (
+        {documentContext.activeDocument ? (
           <>
             <div className={`h-full mx-auto ${PAGE_WIDTH_CLASS[pageWidth]}`}>
               <Editor
-                key={documentContext.activeDocument?.id ?? activeTabId ?? 'e'}
+                key={documentContext.activeDocument?.id ?? documentContext.activeTabId ?? 'e'}
                 content={content}
                 onChange={handleContentChange}
+                onAdapterReady={handleEditorReady}
                 zoom={zoom}
-                actions={editorActions}
                 securityPolicy={activeDocument ? documentContext.activeSecurityPolicy : undefined}
+                onImagePaste={activeDocument ? documentContext.importActiveImageAsset : undefined}
+                resolveAssetUrl={activeDocument ? resolveActiveAssetUrl : undefined}
               />
             </div>
           </>
@@ -416,12 +259,11 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
           </div>
         )}
       </div>
-
       {/* 底部状态栏 */}
-      <div className="flex items-center justify-between px-2.5 h-6 shrink-0 border-t border-border text-[10px] text-muted-foreground/50 select-none">
+      <div className="flex items-center justify-between px-2.5 h-6 shrink-0 text-[10px] text-muted-foreground/50 select-none">
         <div className="flex items-center gap-2.5">
           <a href="https://linch.tech" target="_blank" rel="noopener noreferrer" className="hover:text-muted-foreground transition-colors flex items-center gap-1 no-underline text-inherit">
-            <span>Present by Linch Tech</span>
+            <span>{t('footer.presentBy')}</span>
           </a>
           <a href="https://linch.tech/zh/products/mark-doc" target="_blank" rel="noopener noreferrer" className="hover:text-muted-foreground transition-colors flex items-center no-underline text-inherit" title="MarkDoc">
             <Globe size={10} />
@@ -430,7 +272,7 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
             <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
           </a>
         </div>
-        {activeTab || documentContext.activeDocument ? (
+        {documentContext.activeDocument ? (
           <div className="flex items-center gap-2">
             <span>{getPlainTextLength(content)} {t('common.chars')}</span>
             {zoom !== 100 && (
@@ -450,12 +292,12 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
           fileName={closeConfirm.name}
           onClose={() => setCloseConfirm(null)}
           onDiscard={() => {
-            const target = visibleTabs.find(tab => tab.kind === closeConfirm.kind && tab.id === closeConfirm.id)
+            const target = visibleTabs.find(tab => tab.id === closeConfirm.id)
             if (target) closeVisibleTab(target)
             setCloseConfirm(null)
           }}
           onSave={async () => {
-            const target = visibleTabs.find(tab => tab.kind === closeConfirm.kind && tab.id === closeConfirm.id)
+            const target = visibleTabs.find(tab => tab.id === closeConfirm.id)
             if (!target) {
               setCloseConfirm(null)
               return
@@ -469,15 +311,6 @@ export function EditorPage({ pageWidth, onPageWidthChange }: Props) {
         />
       )}
 
-      {/* 导出 docx 模板选择弹窗 */}
-      <ExportDocxDialog
-        open={exportDocxOpen}
-        onOpenChange={setExportDocxOpen}
-        originalDocxPath={activeDocument?.presentation.docx?.referenceDocx ?? activeTab?.referenceDocxPath}
-        defaultFileName={activeDocument ? activeDocumentTab?.name : activeTab?.name}
-        currentFilePath={activeDocument ? undefined : activeTab?.path}
-        onExport={handleExportDocxWithTemplate}
-      />
     </div>
   )
 }

@@ -1,5 +1,8 @@
-use super::manifest::MarkDocManifest;
-use super::validator::is_safe_package_path;
+use super::manifest::{MarkDocManifest, MARKDOC_MANIFEST_PATH, MARKDOC_README_PATH};
+use super::validator::{
+    is_safe_package_path, validate_existing_package_path, validate_package_output_path,
+    validate_workspace_root,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fs::{self, File};
@@ -8,6 +11,7 @@ use std::path::{Path, PathBuf};
 use zip::write::SimpleFileOptions;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PackageWriteInput {
     pub workspace_root: String,
     pub output_path: String,
@@ -23,19 +27,26 @@ pub struct PackageWriteInput {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PackageWriteResult {
     pub output_path: String,
     pub recovery_path: Option<String>,
 }
 
-#[tauri::command]
 pub fn write_mdoc_package(input: PackageWriteInput) -> Result<PackageWriteResult, String> {
     let workspace_root = PathBuf::from(&input.workspace_root);
     let output_path = PathBuf::from(&input.output_path);
+    validate_workspace_root(&workspace_root)?;
+    validate_package_output_path(&output_path)?;
+    if let Some(source_package_path) = input.source_package_path.as_ref() {
+        validate_existing_package_path(Path::new(source_package_path))?;
+    }
     let tmp_path = output_path.with_extension("mdoc.tmp");
     let recovery_path = output_path.with_extension("mdoc.bak");
 
-    let manifest = input.manifest.unwrap_or_else(|| MarkDocManifest::new(&input.entry));
+    let manifest = input
+        .manifest
+        .unwrap_or_else(|| MarkDocManifest::new(&input.entry));
     manifest.validate()?;
     if manifest.entry != input.entry {
         return Err("package.invalidManifest".to_string());
@@ -53,14 +64,19 @@ pub fn write_mdoc_package(input: PackageWriteInput) -> Result<PackageWriteResult
     if input.files.iter().any(|path| !is_safe_package_path(path)) {
         return Err("package.unsafePath".to_string());
     }
+    if input.files.iter().any(|path| {
+        path == MARKDOC_MANIFEST_PATH || (path == MARKDOC_README_PATH && path != &manifest.entry)
+    }) {
+        return Err("package.unsafePath".to_string());
+    }
     let packaged_files = input.files.iter().cloned().collect::<BTreeSet<_>>();
     let preserved_files = input
         .preserved_files
         .iter()
         .filter(|path| {
             is_safe_package_path(path)
-                && path.as_str() != "manifest.json"
-                && path.as_str() != "README.md"
+                && path.as_str() != MARKDOC_MANIFEST_PATH
+                && path.as_str() != MARKDOC_README_PATH
                 && !packaged_files.contains(path.as_str())
         })
         .cloned()
@@ -73,15 +89,15 @@ pub fn write_mdoc_package(input: PackageWriteInput) -> Result<PackageWriteResult
 
         let manifest_json = serde_json::to_vec_pretty(&manifest)
             .map_err(|_| "package.invalidManifest".to_string())?;
-        zip.start_file("manifest.json", options)
+        zip.start_file(MARKDOC_MANIFEST_PATH, options)
             .map_err(|_| "save.failed".to_string())?;
         zip.write_all(&manifest_json)
             .map_err(|_| "save.failed".to_string())?;
 
-        if !input.files.iter().any(|path| path == "README.md") {
-            zip.start_file("README.md", options)
+        if manifest.entry != MARKDOC_README_PATH {
+            zip.start_file(MARKDOC_README_PATH, options)
                 .map_err(|_| "save.failed".to_string())?;
-            zip.write_all(package_readme_hint().as_bytes())
+            zip.write_all(package_readme_hint(&manifest).as_bytes())
                 .map_err(|_| "save.failed".to_string())?;
         }
 
@@ -103,10 +119,10 @@ pub fn write_mdoc_package(input: PackageWriteInput) -> Result<PackageWriteResult
                 .source_package_path
                 .as_ref()
                 .ok_or_else(|| "package.openFailed".to_string())?;
-            let source_file = File::open(source_path)
-                .map_err(|_| "package.openFailed".to_string())?;
-            let mut source_archive = zip::ZipArchive::new(source_file)
-                .map_err(|_| "package.corrupted".to_string())?;
+            let source_file =
+                File::open(source_path).map_err(|_| "package.openFailed".to_string())?;
+            let mut source_archive =
+                zip::ZipArchive::new(source_file).map_err(|_| "package.corrupted".to_string())?;
             for package_path in &preserved_files {
                 let Ok(mut source_entry) = source_archive.by_name(package_path) else {
                     continue;
@@ -180,17 +196,32 @@ where
     Ok(())
 }
 
-fn package_readme_hint() -> &'static str {
-    r#"# MarkDoc Package
+fn package_readme_hint(manifest: &MarkDocManifest) -> String {
+    format!(
+        r#"# MarkDoc Package
 
 This .mdoc file is an ordinary ZIP package.
+manifest.json is the authoritative package contract.
+manifest.entry names the canonical Markdown source.
 
-- manifest.json is the authoritative package contract.
-- manifest.entry names the canonical Markdown source, normally document.md.
-- Asset and presentation paths are relative to the package root.
-- Remote resources are not trusted by default.
-- Use manifest.schema for machine validation and manifest.spec for the format guide.
-"#
+- Manifest: {manifest_path}
+- Entry: {entry}
+- Schema: {schema}
+- Spec: {spec}
+
+For AI agents and external tools:
+1. Read and validate {manifest_path}.
+2. Open the file named by manifest.entry as the canonical Markdown source.
+3. Resolve asset and presentation paths relative to the package root.
+4. Do not execute scripts or load remote resources unless the package is trusted.
+
+This README is only an orientation hint. The manifest is authoritative.
+"#,
+        manifest_path = MARKDOC_MANIFEST_PATH,
+        entry = manifest.entry.as_str(),
+        schema = manifest.schema.as_str(),
+        spec = manifest.spec.as_str(),
+    )
 }
 
 #[cfg(not(windows))]
@@ -232,9 +263,76 @@ fn replace_existing(tmp_path: &Path, output_path: &Path) -> std::io::Result<()> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::package::manifest::{MARKDOC_PACKAGE_SCHEMA, MARKDOC_PACKAGE_SPEC};
     use std::fs;
     use std::io::Read;
     use zip::ZipArchive;
+
+    #[test]
+    fn deserializes_frontend_camel_case_write_input() {
+        let input: PackageWriteInput = serde_json::from_value(serde_json::json!({
+            "workspaceRoot": "/tmp/markdoc/workspace",
+            "outputPath": "/tmp/markdoc/report.mdoc",
+            "entry": "document.md",
+            "files": ["document.md"],
+            "sourcePackagePath": "/tmp/markdoc/source.mdoc",
+            "preservedFiles": ["assets/kept.png"]
+        }))
+        .unwrap();
+
+        assert_eq!(input.workspace_root, "/tmp/markdoc/workspace");
+        assert_eq!(input.output_path, "/tmp/markdoc/report.mdoc");
+        assert_eq!(
+            input.source_package_path.as_deref(),
+            Some("/tmp/markdoc/source.mdoc")
+        );
+        assert_eq!(input.preserved_files, vec!["assets/kept.png"]);
+    }
+
+    #[test]
+    fn rejects_workspace_roots_outside_markdoc_temp_area() {
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("report.mdoc");
+
+        assert_eq!(
+            write_mdoc_package(PackageWriteInput {
+                workspace_root: "/Users/alice/Documents".to_string(),
+                output_path: output.to_string_lossy().to_string(),
+                entry: "document.md".to_string(),
+                files: vec!["document.md".to_string()],
+                manifest: None,
+                source_package_path: None,
+                preserved_files: Vec::new(),
+            })
+            .unwrap_err(),
+            "package.unsafePath"
+        );
+        assert!(!output.with_extension("mdoc.tmp").exists());
+    }
+
+    #[test]
+    fn rejects_non_mdoc_output_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("workspace");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("document.md"), "# Hello").unwrap();
+        let output = dir.path().join("report.md");
+
+        assert_eq!(
+            write_mdoc_package(PackageWriteInput {
+                workspace_root: root.to_string_lossy().to_string(),
+                output_path: output.to_string_lossy().to_string(),
+                entry: "document.md".to_string(),
+                files: vec!["document.md".to_string()],
+                manifest: None,
+                source_package_path: None,
+                preserved_files: Vec::new(),
+            })
+            .unwrap_err(),
+            "package.unsafePath"
+        );
+        assert!(!output.exists());
+    }
 
     #[test]
     fn writes_discoverable_manifest_and_stable_core_paths() {
@@ -305,6 +403,40 @@ mod tests {
     }
 
     #[test]
+    fn readme_hint_names_the_actual_entry_and_format_links() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("workspace");
+        fs::create_dir_all(root.join("content")).unwrap();
+        fs::write(root.join("content/main.md"), "# Hello").unwrap();
+        let output = dir.path().join("report.mdoc");
+
+        write_mdoc_package(PackageWriteInput {
+            workspace_root: root.to_string_lossy().to_string(),
+            output_path: output.to_string_lossy().to_string(),
+            entry: "content/main.md".to_string(),
+            files: vec!["content/main.md".to_string()],
+            manifest: None,
+            source_package_path: None,
+            preserved_files: Vec::new(),
+        })
+        .unwrap();
+
+        let mut archive = ZipArchive::new(File::open(output).unwrap()).unwrap();
+        let mut readme = String::new();
+        archive
+            .by_name("README.md")
+            .unwrap()
+            .read_to_string(&mut readme)
+            .unwrap();
+
+        assert!(readme.contains("Entry: content/main.md"));
+        assert!(readme.contains("Manifest: manifest.json"));
+        assert!(readme.contains(MARKDOC_PACKAGE_SCHEMA));
+        assert!(readme.contains(MARKDOC_PACKAGE_SPEC));
+        assert!(readme.contains("Do not execute scripts or load remote resources"));
+    }
+
+    #[test]
     fn preserves_manifest_entry_and_safe_resources_when_repacking() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join("workspace");
@@ -319,20 +451,27 @@ mod tests {
         manifest.presentation = Some(crate::package::manifest::ManifestPresentation {
             print: None,
             docx_reference: Some("presentation/reference.docx".to_string()),
+            extensions: serde_json::Map::new(),
         });
 
         write_mdoc_package(PackageWriteInput {
             workspace_root: root.to_string_lossy().to_string(),
             output_path: output.to_string_lossy().to_string(),
             entry: "content/main.md".to_string(),
-            files: vec!["content/main.md".to_string(), "assets/chart.png".to_string(), "presentation/reference.docx".to_string()],
+            files: vec![
+                "content/main.md".to_string(),
+                "assets/chart.png".to_string(),
+                "presentation/reference.docx".to_string(),
+            ],
             manifest: Some(manifest.clone()),
             source_package_path: None,
             preserved_files: Vec::new(),
-        }).unwrap();
+        })
+        .unwrap();
 
         let mut archive = ZipArchive::new(File::open(output).unwrap()).unwrap();
-        let saved_manifest: MarkDocManifest = serde_json::from_reader(archive.by_name("manifest.json").unwrap()).unwrap();
+        let saved_manifest: MarkDocManifest =
+            serde_json::from_reader(archive.by_name("manifest.json").unwrap()).unwrap();
         assert_eq!(saved_manifest, manifest);
         assert!(archive.by_name("assets/chart.png").is_ok());
         assert!(archive.by_name("presentation/reference.docx").is_ok());
@@ -350,7 +489,8 @@ mod tests {
             let mut zip = zip::ZipWriter::new(file);
             let options = SimpleFileOptions::default();
             zip.start_file("manifest.json", options).unwrap();
-            zip.write_all(&serde_json::to_vec(&manifest).unwrap()).unwrap();
+            zip.write_all(&serde_json::to_vec(&manifest).unwrap())
+                .unwrap();
             for (name, bytes) in [
                 ("document.md", b"# Original".as_slice()),
                 ("assets/chart.png", b"chart".as_slice()),
@@ -418,6 +558,65 @@ mod tests {
                 "package.missingEntry"
             );
         }
+    }
+
+    #[test]
+    fn rejects_writer_owned_root_metadata_as_ordinary_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("workspace");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("document.md"), "# Hello").unwrap();
+        fs::write(root.join("manifest.json"), "{}").unwrap();
+        fs::write(root.join("README.md"), "# Wrong layer").unwrap();
+        let output = dir.path().join("report.mdoc");
+
+        for files in [
+            vec!["document.md".to_string(), "manifest.json".to_string()],
+            vec!["document.md".to_string(), "README.md".to_string()],
+        ] {
+            assert_eq!(
+                write_mdoc_package(PackageWriteInput {
+                    workspace_root: root.to_string_lossy().to_string(),
+                    output_path: output.to_string_lossy().to_string(),
+                    entry: "document.md".to_string(),
+                    files,
+                    manifest: None,
+                    source_package_path: None,
+                    preserved_files: Vec::new(),
+                })
+                .unwrap_err(),
+                "package.unsafePath"
+            );
+        }
+    }
+
+    #[test]
+    fn allows_readme_as_content_when_the_manifest_entry_points_to_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("workspace");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("README.md"), "# User document").unwrap();
+        let output = dir.path().join("report.mdoc");
+
+        write_mdoc_package(PackageWriteInput {
+            workspace_root: root.to_string_lossy().to_string(),
+            output_path: output.to_string_lossy().to_string(),
+            entry: "README.md".to_string(),
+            files: vec!["README.md".to_string()],
+            manifest: None,
+            source_package_path: None,
+            preserved_files: Vec::new(),
+        })
+        .unwrap();
+
+        let mut archive = ZipArchive::new(File::open(output).unwrap()).unwrap();
+        let mut readme = String::new();
+        archive
+            .by_name("README.md")
+            .unwrap()
+            .read_to_string(&mut readme)
+            .unwrap();
+        assert_eq!(readme, "# User document");
     }
 
     #[test]

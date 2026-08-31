@@ -1,8 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { invoke } from '@tauri-apps/api/core'
-import { readTextFile } from '@tauri-apps/plugin-fs'
+import { readTextFile } from '../../native-file'
 import { DocxImporter } from '../../importers/DocxImporter'
 import { DocxExporter } from '../../exporters/DocxExporter'
+import { DocumentService } from '../document-service'
+
+vi.mock('../../native-file', () => ({
+  readTextFile: vi.fn(),
+}))
 
 describe('DOCX importer/exporter', () => {
   beforeEach(() => {
@@ -73,6 +78,30 @@ describe('DOCX importer/exporter', () => {
       ok: false,
       error: { code: 'import.docxFailed', messageKey: 'errors.import.docxFailed' },
     })
+  })
+
+  it('opens legacy .doc files through the Word import flow', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce({
+      workspace_root: '/tmp/markdoc/doc-legacy',
+      markdown_path: '/tmp/markdoc/doc-legacy/document.md',
+      assets_path: '/tmp/markdoc/doc-legacy/assets',
+    })
+    vi.mocked(readTextFile).mockResolvedValueOnce('# Imported DOC')
+
+    const result = await new DocumentService().openPath('/docs/report.doc')
+
+    expect(result.ok).toBe(true)
+    expect(invoke).toHaveBeenCalledWith('import_docx_to_workspace', {
+      inputPath: '/docs/report.doc',
+      workspaceRoot: expect.stringContaining('/tmp/markdoc/docx-'),
+    })
+    if (result.ok) {
+      expect(result.value.document.source).toMatchObject({
+        type: 'docx',
+        originalPath: '/docs/report.doc',
+      })
+      expect(result.value.document.markdown).toBe('# Imported DOC')
+    }
   })
 
   it('exports document workspace through docx command', async () => {

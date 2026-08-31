@@ -1,4 +1,4 @@
-import { mkdir, readTextFile, remove, writeTextFile } from '@tauri-apps/plugin-fs'
+import { readTextFile, removeFile, writeTextFile } from '../native-file'
 
 export interface SaveFailureInput {
   markdown: string
@@ -19,7 +19,6 @@ export class RecoveryService {
   async persistSaveFailure(documentId: string, input: SaveFailureInput): Promise<RecoveryState> {
     const safeId = documentId.replace(/[^a-zA-Z0-9._-]/g, '_')
     const draftPath = `${this.recoveryRoot}/${safeId}.md`
-    await mkdir(this.recoveryRoot, { recursive: true })
     await writeTextFile(draftPath, input.markdown)
     const state: RecoveryState = {
       documentId,
@@ -46,7 +45,7 @@ export class RecoveryService {
     this.states.delete(documentId)
     if (draftPath) {
       try {
-        await remove(draftPath)
+        await removeFile(draftPath)
       } catch {
         // The in-memory recovery state is still cleared if the draft was already removed.
       }
