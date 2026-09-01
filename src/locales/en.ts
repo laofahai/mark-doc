@@ -138,6 +138,7 @@ export default {
     invalidManifest: 'Invalid MarkDoc document manifest',
     corruptedRecovery: 'The document package is corrupted; safe recovery mode is active',
     quarantinedResources: 'Some document package resources were quarantined',
+    missingManifestResources: 'The document package is missing resources declared in the manifest',
   },
   security: {
     enableRemoteForDocument: 'Allow this document to load remote resources',

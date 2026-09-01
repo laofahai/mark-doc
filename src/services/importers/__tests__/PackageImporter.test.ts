@@ -71,6 +71,7 @@ describe('PackageImporter', () => {
         presentation: { docxReference: 'presentation/reference.docx' },
       },
       entries: ['document.md'],
+      missing_resources: ['presentation/reference.docx'],
       quarantined: ['presentation/reference.docx'],
       workspace_root: '/tmp/markdoc/package-3',
       entry_path: '/tmp/markdoc/package-3/document.md',
@@ -82,6 +83,39 @@ describe('PackageImporter', () => {
     expect(result).toMatchObject({
       ok: true,
       value: { presentation: {} },
+    })
+  })
+
+  it('keeps missing manifest resources separate from quarantined resources', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce({
+      manifest: {
+        format: 'markdoc-package',
+        version: 1,
+        entry: 'document.md',
+        presentation: {
+          print: 'presentation/print.css',
+          docxReference: 'presentation/reference.docx',
+        },
+      },
+      entries: ['document.md'],
+      missing_resources: ['presentation/print.css', 'presentation/reference.docx'],
+      quarantined: [],
+      workspace_root: '/tmp/markdoc/package-4',
+      entry_path: '/tmp/markdoc/package-4/document.md',
+    })
+    vi.mocked(readTextFile).mockResolvedValueOnce('# Package')
+
+    const result = await new PackageImporter().open('/docs/report.mdoc', '/tmp/markdoc/package-4')
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        workspace: {
+          packageMissingManifestResources: ['presentation/print.css', 'presentation/reference.docx'],
+          packageQuarantined: [],
+        },
+        presentation: {},
+      },
     })
   })
 

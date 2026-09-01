@@ -3,6 +3,7 @@ use super::validator::{
     is_safe_package_path, is_url_like, validate_existing_package_path, validate_workspace_root,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::fs::{self, File};
 use std::io::{copy, Read};
 use std::path::{Path, PathBuf};
@@ -13,6 +14,7 @@ pub struct PackageReadResult {
     pub manifest: MarkDocManifest,
     pub entries: Vec<String>,
     pub quarantined: Vec<String>,
+    pub missing_resources: Vec<String>,
     pub has_readme_hint: bool,
 }
 
@@ -21,6 +23,7 @@ pub struct PackageExtractResult {
     pub manifest: MarkDocManifest,
     pub entries: Vec<String>,
     pub quarantined: Vec<String>,
+    pub missing_resources: Vec<String>,
     pub has_readme_hint: bool,
     pub workspace_root: String,
     pub entry_path: String,
@@ -31,6 +34,7 @@ pub struct PackageValidationResult {
     pub manifest: MarkDocManifest,
     pub entries: Vec<String>,
     pub quarantined: Vec<String>,
+    pub missing_resources: Vec<String>,
     pub has_readme_hint: bool,
     pub warnings: Vec<String>,
 }
@@ -54,12 +58,14 @@ pub fn read_mdoc_package(package_path: String) -> Result<PackageReadResult, Stri
 
     let mut entries = Vec::new();
     let mut quarantined = Vec::new();
+    let mut package_names = BTreeSet::new();
     let mut has_readme_hint = false;
     for i in 0..archive.len() {
         let entry = archive
             .by_index(i)
             .map_err(|_| "package.corrupted".to_string())?;
         let name = entry.name().to_string();
+        package_names.insert(name.clone());
         if name == MARKDOC_MANIFEST_PATH {
             continue;
         }
@@ -75,18 +81,10 @@ pub fn read_mdoc_package(package_path: String) -> Result<PackageReadResult, Stri
         }
     }
 
-    if let Some(docx_reference) = manifest
-        .presentation
-        .as_ref()
-        .and_then(|presentation| presentation.docx_reference.as_ref())
-    {
-        if is_url_like(docx_reference)
-            || !is_safe_package_path(docx_reference)
-            || !docx_reference.to_ascii_lowercase().ends_with(".docx")
-        {
-            quarantined.push(docx_reference.clone());
-        }
+    for resource in unsafe_manifest_resources(&manifest) {
+        push_unique(&mut quarantined, resource);
     }
+    let missing_resources = missing_manifest_resources(&manifest, &package_names);
 
     if !entries.iter().any(|name| name == &manifest.entry) {
         return Err("package.missingEntry".to_string());
@@ -96,6 +94,7 @@ pub fn read_mdoc_package(package_path: String) -> Result<PackageReadResult, Stri
         manifest,
         entries,
         quarantined,
+        missing_resources,
         has_readme_hint,
     })
 }
@@ -109,11 +108,15 @@ pub fn validate_mdoc_package(package_path: String) -> Result<PackageValidationRe
     if !inspected.quarantined.is_empty() {
         warnings.push("package.quarantinedEntries".to_string());
     }
+    if !inspected.missing_resources.is_empty() {
+        warnings.push("package.missingManifestResources".to_string());
+    }
 
     Ok(PackageValidationResult {
         manifest: inspected.manifest,
         entries: inspected.entries,
         quarantined: inspected.quarantined,
+        missing_resources: inspected.missing_resources,
         has_readme_hint: inspected.has_readme_hint,
         warnings,
     })
@@ -192,6 +195,7 @@ fn extract_inspected_package(
         manifest: inspected.manifest,
         entries: inspected.entries,
         quarantined: inspected.quarantined,
+        missing_resources: inspected.missing_resources,
         has_readme_hint: inspected.has_readme_hint,
         workspace_root,
         entry_path: entry_path.to_string_lossy().to_string(),
@@ -234,6 +238,7 @@ fn recover_package_index(archive: &mut ZipArchive<File>) -> Result<PackageReadRe
         manifest: MarkDocManifest::new(entry),
         entries,
         quarantined,
+        missing_resources: Vec::new(),
         has_readme_hint,
     })
 }
@@ -275,6 +280,54 @@ fn is_manifest_docx_reference(name: &str, manifest: &MarkDocManifest) -> bool {
         && !is_url_like(reference)
         && is_safe_package_path(reference)
         && reference.to_ascii_lowercase().ends_with(".docx")
+}
+
+fn manifest_presentation_resources(manifest: &MarkDocManifest) -> Vec<(&str, bool)> {
+    let Some(presentation) = manifest.presentation.as_ref() else {
+        return Vec::new();
+    };
+    let mut resources = Vec::new();
+    if let Some(print) = presentation.print.as_deref() {
+        resources.push((print, false));
+    }
+    if let Some(docx_reference) = presentation.docx_reference.as_deref() {
+        resources.push((docx_reference, true));
+    }
+    resources
+}
+
+fn unsafe_manifest_resources(manifest: &MarkDocManifest) -> Vec<String> {
+    manifest_presentation_resources(manifest)
+        .into_iter()
+        .filter(|(reference, requires_docx)| {
+            is_url_like(reference)
+                || !is_safe_package_path(reference)
+                || (*requires_docx && !reference.to_ascii_lowercase().ends_with(".docx"))
+        })
+        .map(|(reference, _)| reference.to_string())
+        .collect()
+}
+
+fn missing_manifest_resources(
+    manifest: &MarkDocManifest,
+    package_names: &BTreeSet<String>,
+) -> Vec<String> {
+    manifest_presentation_resources(manifest)
+        .into_iter()
+        .filter(|(reference, requires_docx)| {
+            !is_url_like(reference)
+                && is_safe_package_path(reference)
+                && (!*requires_docx || reference.to_ascii_lowercase().ends_with(".docx"))
+                && !package_names.contains(*reference)
+        })
+        .map(|(reference, _)| reference.to_string())
+        .collect()
+}
+
+fn push_unique(items: &mut Vec<String>, item: String) {
+    if !items.contains(&item) {
+        items.push(item);
+    }
 }
 
 #[cfg(test)]
@@ -435,6 +488,47 @@ mod tests {
         assert_eq!(
             fs::read_to_string(workspace_path.join("presentation/reference.docx")).unwrap(),
             "docx"
+        );
+    }
+
+    #[test]
+    fn reports_missing_manifest_presentation_resources_as_validation_warning() {
+        let dir = tempfile::tempdir().unwrap();
+        let package_path = dir.path().join("missing-presentation.mdoc");
+        let workspace_path = dir.path().join("workspace");
+        let mut manifest = MarkDocManifest::new("document.md");
+        manifest.presentation = Some(ManifestPresentation {
+            print: Some("presentation/print.css".to_string()),
+            docx_reference: Some("presentation/reference.docx".to_string()),
+            extensions: serde_json::Map::new(),
+        });
+        write_package(&package_path, &manifest, &[("document.md", "# Hello")]);
+
+        let inspected = read_mdoc_package(package_path.to_string_lossy().to_string()).unwrap();
+        assert_eq!(inspected.entries, vec!["document.md"]);
+        assert_eq!(inspected.quarantined, Vec::<String>::new());
+        assert_eq!(
+            inspected.missing_resources,
+            vec!["presentation/print.css", "presentation/reference.docx"]
+        );
+
+        let validation = validate_mdoc_package(package_path.to_string_lossy().to_string()).unwrap();
+        assert_eq!(
+            validation.warnings,
+            vec![
+                "package.missingReadmeHint",
+                "package.missingManifestResources"
+            ]
+        );
+
+        let extracted = extract_mdoc_package(
+            package_path.to_string_lossy().to_string(),
+            workspace_path.to_string_lossy().to_string(),
+        )
+        .unwrap();
+        assert_eq!(
+            extracted.missing_resources,
+            vec!["presentation/print.css", "presentation/reference.docx"]
         );
     }
 

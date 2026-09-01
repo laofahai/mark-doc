@@ -203,6 +203,7 @@ export function EditorPage({ pageWidth }: Props) {
       )}
       <PackageSecurityPanel
         quarantined={documentContext.activeDocument?.workspace.packageQuarantined ?? []}
+        missingManifestResources={documentContext.activeDocument?.workspace.packageMissingManifestResources ?? []}
         recovered={documentContext.activeDocument?.workspace.packageRecovered ?? false}
         onTrustDocument={documentContext.trustActiveDocument}
         onAllowResourceType={documentContext.allowActiveRemoteResourceType}

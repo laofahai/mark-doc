@@ -3,6 +3,7 @@ import type { RemoteResourceType } from '../services/security/PackageSecurityPol
 
 interface Props {
   quarantined: string[]
+  missingManifestResources?: string[]
   recovered?: boolean
   onTrustDocument: () => void
   onAllowResourceType: (type: RemoteResourceType) => void
@@ -36,19 +37,42 @@ function remoteUrl(value: string) {
   }
 }
 
-export function PackageSecurityPanel({ quarantined, recovered = false, onTrustDocument, onAllowResourceType, onAllowDomain, onAllowUrl }: Props) {
+export function PackageSecurityPanel({
+  quarantined,
+  missingManifestResources = [],
+  recovered = false,
+  onTrustDocument,
+  onAllowResourceType,
+  onAllowDomain,
+  onAllowUrl,
+}: Props) {
   const { t } = useTranslation()
 
-  if (quarantined.length === 0) return null
+  if (!recovered && quarantined.length === 0 && missingManifestResources.length === 0) return null
   const remoteResources = quarantined.map(value => ({ value, parsed: remoteUrl(value) })).filter((resource): resource is { value: string; parsed: URL } => resource.parsed !== null)
   const resourceTypes = [...new Set(remoteResources.map(resource => remoteResourceType(resource.value)))]
 
   return (
     <div className="shrink-0 border-b border-border bg-background px-4 py-2 text-sm">
-      <div className="font-medium text-foreground">{t(recovered ? 'package.corruptedRecovery' : 'package.quarantinedResources')}</div>
-      <ul className="mt-2 text-xs text-muted-foreground">
-        {quarantined.map(path => <li key={path}>{path}</li>)}
-      </ul>
+      {recovered && (
+        <div className="font-medium text-foreground">{t('package.corruptedRecovery')}</div>
+      )}
+      {quarantined.length > 0 && (
+        <section className={recovered ? 'mt-2' : undefined}>
+          <div className="font-medium text-foreground">{t('package.quarantinedResources')}</div>
+          <ul className="mt-2 text-xs text-muted-foreground">
+            {quarantined.map(path => <li key={path}>{path}</li>)}
+          </ul>
+        </section>
+      )}
+      {missingManifestResources.length > 0 && (
+        <section className={recovered || quarantined.length > 0 ? 'mt-2' : undefined}>
+          <div className="font-medium text-foreground">{t('package.missingManifestResources')}</div>
+          <ul className="mt-2 text-xs text-muted-foreground">
+            {missingManifestResources.map(path => <li key={path}>{path}</li>)}
+          </ul>
+        </section>
+      )}
       {remoteResources.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-2">
           <button className="cursor-pointer border border-border bg-transparent px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground" onClick={onTrustDocument}>{t('security.enableRemoteForDocument')}</button>

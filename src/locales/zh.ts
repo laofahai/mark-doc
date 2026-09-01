@@ -138,6 +138,7 @@ export default {
     invalidManifest: 'MarkDoc 文档清单无效',
     corruptedRecovery: '文档包已损坏，已进入安全恢复模式',
     quarantinedResources: '部分文档包资源已被隔离',
+    missingManifestResources: '文档包缺少清单声明的资源',
   },
   security: {
     enableRemoteForDocument: '允许此文档加载远程资源',

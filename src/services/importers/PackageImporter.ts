@@ -20,6 +20,7 @@ export interface PackageInspectResult {
   manifest: PackageManifest
   entries: string[]
   quarantined: string[]
+  missing_resources?: string[]
   has_readme_hint?: boolean
 }
 
@@ -79,6 +80,7 @@ export class PackageImporter {
         packageEntries: result.entries,
         packageManifest: result.manifest,
         packageQuarantined: result.quarantined,
+        packageMissingManifestResources: result.missing_resources ?? [],
         packageRecovered: extracted.recovered,
       }
       const referenceDocx = this.extractedDocxReference(result, workspace)

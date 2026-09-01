@@ -64,3 +64,9 @@ Assets and presentation resources are referenced from Markdown or manifest
 fields with package-relative paths. Remote resources are not trusted by default.
 Importers should quarantine active or high-risk resources such as CSS, SVG, and
 DOCX references until the user explicitly trusts them.
+
+If `manifest.entry` is missing, the package cannot be opened normally. If a
+manifest presentation resource such as `presentation.print` or
+`presentation.docxReference` is missing, readers should report an integrity
+warning and still open the Markdown entry when it is present. Writers must not
+create a new package whose manifest points at resources that are not included.

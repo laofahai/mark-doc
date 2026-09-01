@@ -20,6 +20,7 @@ export interface DocumentWorkspace {
   packageEntries?: string[]
   packageManifest?: object & { entry?: string }
   packageQuarantined?: string[]
+  packageMissingManifestResources?: string[]
   packageRecovered?: boolean
   storage: WorkspaceStorage
 }

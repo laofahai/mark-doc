@@ -50,6 +50,38 @@ describe('recovery and security panels', () => {
     expect(screen.queryByText('security.enableRemoteForDocument')).not.toBeInTheDocument()
   })
 
+  it('renders missing manifest resources without trust controls', () => {
+    render(<PackageSecurityPanel
+      quarantined={[]}
+      missingManifestResources={['presentation/reference.docx']}
+      onTrustDocument={vi.fn()}
+      onAllowResourceType={vi.fn()}
+      onAllowDomain={vi.fn()}
+      onAllowUrl={vi.fn()}
+    />)
+
+    expect(screen.getByText('package.missingManifestResources')).toBeInTheDocument()
+    expect(screen.getByText('presentation/reference.docx')).toBeInTheDocument()
+    expect(screen.queryByText('security.enableRemoteForDocument')).not.toBeInTheDocument()
+  })
+
+  it('renders recovered, quarantined, and missing package states as separate sections', () => {
+    render(<PackageSecurityPanel
+      recovered
+      quarantined={['https://cdn.example.com/theme.css']}
+      missingManifestResources={['presentation/reference.docx']}
+      onTrustDocument={vi.fn()}
+      onAllowResourceType={vi.fn()}
+      onAllowDomain={vi.fn()}
+      onAllowUrl={vi.fn()}
+    />)
+
+    expect(screen.getByText('package.corruptedRecovery')).toBeInTheDocument()
+    expect(screen.getByText('package.quarantinedResources')).toBeInTheDocument()
+    expect(screen.getByText('package.missingManifestResources')).toBeInTheDocument()
+    expect(screen.getByText('security.enableRemoteForDocument')).toBeInTheDocument()
+  })
+
   it('shows recovery mode when a broken package was recovered', () => {
     render(<PackageSecurityPanel
       recovered
@@ -63,7 +95,7 @@ describe('recovery and security panels', () => {
     expect(screen.getByText('package.corruptedRecovery')).toBeInTheDocument()
   })
 
-  it('does not render when no package resources are quarantined', () => {
+  it('does not render when no package diagnostics are present', () => {
     const { container } = render(<PackageSecurityPanel
       quarantined={[]}
       onTrustDocument={vi.fn()}
