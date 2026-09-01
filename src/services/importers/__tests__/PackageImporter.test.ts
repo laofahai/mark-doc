@@ -155,4 +155,25 @@ describe('PackageImporter', () => {
       workspaceRoot: '/tmp/markdoc/recovered-package',
     })
   })
+
+  it('does not recover packages rejected by the resource budget', async () => {
+    vi.clearAllMocks()
+    vi.mocked(invoke).mockRejectedValueOnce('package.limitExceeded')
+
+    const result = await new PackageImporter().open('/docs/huge.mdoc', '/tmp/markdoc/huge-package')
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: 'package.limitExceeded',
+        messageKey: 'errors.package.limitExceeded',
+        params: { path: '/docs/huge.mdoc' },
+      },
+    })
+    expect(invoke).toHaveBeenCalledTimes(1)
+    expect(invoke).toHaveBeenCalledWith('extract_mdoc_package', {
+      packagePath: '/docs/huge.mdoc',
+      workspaceRoot: '/tmp/markdoc/huge-package',
+    })
+  })
 })

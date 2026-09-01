@@ -168,6 +168,7 @@ export default {
       invalidManifest: 'Invalid MarkDoc document manifest: {{path}}',
       openFailed: 'Failed to open MarkDoc document package: {{path}}',
       unsafePath: 'Document package contains an unsafe path: {{path}}',
+      limitExceeded: 'MarkDoc document package exceeds safe resource limits: {{path}}',
       assetCopyFailed: 'Save failed: could not bundle resource {{path}}. Current content is preserved in a recovery draft.',
     },
     save: {

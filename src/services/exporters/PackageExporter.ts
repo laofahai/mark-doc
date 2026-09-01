@@ -1,6 +1,8 @@
 import { invoke } from '@tauri-apps/api/core'
-import { err, ok, type Result } from '../document/errors'
+import { err, errorCauseMatches, ok, type Result } from '../document/errors'
 import type { DocumentWorkspace } from '../document/model'
+
+const PACKAGE_LIMIT_EXCEEDED = 'package.limitExceeded'
 
 export interface PackageExportOptions {
   outputPath: string
@@ -35,6 +37,9 @@ export class PackageExporter {
       })
       return ok(result)
     } catch (cause) {
+      if (errorCauseMatches(cause, PACKAGE_LIMIT_EXCEEDED)) {
+        return err('save.failed', { messageKey: 'errors.package.limitExceeded', params: { path: options.outputPath }, cause })
+      }
       return err('save.failed', { messageKey: 'errors.save.failed', cause })
     }
   }

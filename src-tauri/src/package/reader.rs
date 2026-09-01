@@ -1,3 +1,6 @@
+use super::limits::{
+    copy_limited, read_to_vec_limited, track_package_bytes, validate_archive_budget,
+};
 use super::manifest::{MarkDocManifest, MARKDOC_MANIFEST_PATH, MARKDOC_README_PATH};
 use super::validator::{
     is_safe_package_path, is_url_like, validate_existing_package_path, validate_workspace_root,
@@ -5,7 +8,6 @@ use super::validator::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fs::{self, File};
-use std::io::{copy, Read};
 use std::path::{Path, PathBuf};
 use zip::ZipArchive;
 
@@ -44,12 +46,15 @@ pub fn read_mdoc_package(package_path: String) -> Result<PackageReadResult, Stri
     validate_existing_package_path(&package_path_buf)?;
     let file = File::open(package_path_buf).map_err(|_| "package.openFailed".to_string())?;
     let mut archive = ZipArchive::new(file).map_err(|_| "package.corrupted".to_string())?;
+    validate_archive_budget(&mut archive)?;
 
-    let mut manifest_json = String::new();
-    archive
-        .by_name(MARKDOC_MANIFEST_PATH)
-        .map_err(|_| "package.invalidManifest".to_string())?
-        .read_to_string(&mut manifest_json)
+    let manifest_bytes = read_to_vec_limited(
+        archive
+            .by_name(MARKDOC_MANIFEST_PATH)
+            .map_err(|_| "package.invalidManifest".to_string())?,
+        "package.invalidManifest",
+    )?;
+    let manifest_json = String::from_utf8(manifest_bytes)
         .map_err(|_| "package.invalidManifest".to_string())?;
 
     let manifest: MarkDocManifest =
@@ -138,6 +143,7 @@ pub fn recover_mdoc_package(
     validate_existing_package_path(&package_path_buf)?;
     let file = File::open(&package_path_buf).map_err(|_| "package.openFailed".to_string())?;
     let mut archive = ZipArchive::new(file).map_err(|_| "package.corrupted".to_string())?;
+    validate_archive_budget(&mut archive)?;
     let inspected = recover_package_index(&mut archive)?;
     extract_inspected_package(&package_path, workspace_root, inspected)
 }
@@ -161,6 +167,7 @@ fn extract_inspected_package(
     )
     .map_err(|_| "workspace.createFailed".to_string())?;
 
+    let mut extracted_bytes = 0;
     for entry_name in &inspected.entries {
         // Entries originate from read_mdoc_package, but validate again at the write boundary.
         if is_url_like(entry_name)
@@ -170,7 +177,7 @@ fn extract_inspected_package(
             return Err("package.unsafePath".to_string());
         }
         let output_path = workspace.join(entry_name);
-        let mut entry = archive
+        let entry = archive
             .by_name(entry_name)
             .map_err(|_| "package.corrupted".to_string())?;
         if entry.is_dir() {
@@ -183,7 +190,13 @@ fn extract_inspected_package(
         fs::create_dir_all(parent).map_err(|_| "workspace.createFailed".to_string())?;
         let mut output =
             File::create(output_path).map_err(|_| "workspace.createFailed".to_string())?;
-        copy(&mut entry, &mut output).map_err(|_| "package.corrupted".to_string())?;
+        let written = copy_limited(
+            entry,
+            &mut output,
+            "package.corrupted",
+            "workspace.createFailed",
+        )?;
+        track_package_bytes(&mut extracted_bytes, written)?;
     }
 
     let entry_path = workspace.join(&inspected.manifest.entry);
@@ -378,6 +391,89 @@ mod tests {
         assert_eq!(
             read_mdoc_package(path.to_string_lossy().to_string()).unwrap_err(),
             "package.unsafePath"
+        );
+    }
+
+    #[test]
+    fn rejects_packages_above_entry_count_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("too-many-entries.mdoc");
+        let manifest = MarkDocManifest::new("document.md");
+        let file = File::create(&path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let options = SimpleFileOptions::default();
+        zip.start_file("manifest.json", options).unwrap();
+        zip.write_all(&serde_json::to_vec(&manifest).unwrap())
+            .unwrap();
+        zip.start_file("document.md", options).unwrap();
+        zip.write_all(b"# Hello").unwrap();
+        for index in 0..17 {
+            let name = format!("assets/{index}.txt");
+            zip.start_file(name, options).unwrap();
+            zip.write_all(b"x").unwrap();
+        }
+        zip.finish().unwrap();
+
+        assert_eq!(
+            read_mdoc_package(path.to_string_lossy().to_string()).unwrap_err(),
+            "package.limitExceeded"
+        );
+    }
+
+    #[test]
+    fn rejects_packages_above_single_entry_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("oversized-entry.mdoc");
+        let document = "x".repeat(2048);
+        write_package(
+            &path,
+            &MarkDocManifest::new("document.md"),
+            &[("document.md", document.as_str())],
+        );
+
+        assert_eq!(
+            read_mdoc_package(path.to_string_lossy().to_string()).unwrap_err(),
+            "package.limitExceeded"
+        );
+    }
+
+    #[test]
+    fn rejects_packages_above_total_uncompressed_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("oversized-total.mdoc");
+        let chunk = "x".repeat(900);
+        write_package(
+            &path,
+            &MarkDocManifest::new("document.md"),
+            &[
+                ("document.md", chunk.as_str()),
+                ("assets/1.png", chunk.as_str()),
+                ("assets/2.png", chunk.as_str()),
+                ("assets/3.png", chunk.as_str()),
+                ("assets/4.png", chunk.as_str()),
+            ],
+        );
+
+        assert_eq!(
+            read_mdoc_package(path.to_string_lossy().to_string()).unwrap_err(),
+            "package.limitExceeded"
+        );
+    }
+
+    #[test]
+    fn rejects_oversized_quarantined_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("oversized-quarantined.mdoc");
+        let svg = "x".repeat(2048);
+        write_package(
+            &path,
+            &MarkDocManifest::new("document.md"),
+            &[("document.md", "# Hello"), ("assets/icon.svg", svg.as_str())],
+        );
+
+        assert_eq!(
+            read_mdoc_package(path.to_string_lossy().to_string()).unwrap_err(),
+            "package.limitExceeded"
         );
     }
 

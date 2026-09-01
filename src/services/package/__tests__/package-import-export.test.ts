@@ -96,4 +96,24 @@ describe('package import/export wrappers', () => {
       expect(result.error.messageKey).toBe('errors.package.openFailed')
     }
   })
+
+  it('surfaces package budget failures during export without changing save recovery semantics', async () => {
+    vi.clearAllMocks()
+    vi.mocked(invoke).mockRejectedValueOnce('package.limitExceeded')
+    const exporter = new PackageExporter()
+    const workspace = createTemporaryWorkspace('/tmp/markdoc/doc-3', 'test')
+
+    const result = await exporter.export(workspace, {
+      outputPath: '/docs/huge.mdoc',
+      entry: 'document.md',
+      files: ['document.md'],
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.code).toBe('save.failed')
+      expect(result.error.messageKey).toBe('errors.package.limitExceeded')
+      expect(result.error.params).toEqual({ path: '/docs/huge.mdoc' })
+    }
+  })
 })

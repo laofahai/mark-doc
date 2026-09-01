@@ -1,3 +1,4 @@
+use super::limits::{copy_limited, ensure_package_entry_count, track_package_bytes};
 use super::manifest::{MarkDocManifest, MARKDOC_MANIFEST_PATH, MARKDOC_README_PATH};
 use super::validator::{
     is_safe_package_path, validate_existing_package_path, validate_package_output_path,
@@ -6,7 +7,7 @@ use super::validator::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fs::{self, File};
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use zip::write::SimpleFileOptions;
 
@@ -82,37 +83,50 @@ pub fn write_mdoc_package(input: PackageWriteInput) -> Result<PackageWriteResult
         .cloned()
         .collect::<BTreeSet<_>>();
     validate_manifest_resource_entries(&manifest, &packaged_files, &preserved_files)?;
+    let metadata_entry_count = 1 + usize::from(manifest.entry != MARKDOC_README_PATH);
+    ensure_package_entry_count(input.files.len() + preserved_files.len() + metadata_entry_count)?;
+
+    let manifest_json =
+        serde_json::to_vec_pretty(&manifest).map_err(|_| "package.invalidManifest".to_string())?;
+    let readme_hint = if manifest.entry != MARKDOC_README_PATH {
+        Some(package_readme_hint(&manifest))
+    } else {
+        None
+    };
+    let mut total_bytes = 0;
+    track_package_bytes(&mut total_bytes, manifest_json.len() as u64)?;
+    if let Some(readme_hint) = readme_hint.as_ref() {
+        track_package_bytes(&mut total_bytes, readme_hint.len() as u64)?;
+    }
 
     let file = File::create(&tmp_path).map_err(|_| "save.failed".to_string())?;
     let write_result = (|| {
         let mut zip = zip::ZipWriter::new(file);
         let options = SimpleFileOptions::default();
 
-        let manifest_json = serde_json::to_vec_pretty(&manifest)
-            .map_err(|_| "package.invalidManifest".to_string())?;
         zip.start_file(MARKDOC_MANIFEST_PATH, options)
             .map_err(|_| "save.failed".to_string())?;
         zip.write_all(&manifest_json)
             .map_err(|_| "save.failed".to_string())?;
 
-        if manifest.entry != MARKDOC_README_PATH {
+        if let Some(readme_hint) = readme_hint.as_ref() {
             zip.start_file(MARKDOC_README_PATH, options)
                 .map_err(|_| "save.failed".to_string())?;
-            zip.write_all(package_readme_hint(&manifest).as_bytes())
+            zip.write_all(readme_hint.as_bytes())
                 .map_err(|_| "save.failed".to_string())?;
         }
 
         for package_path in &input.files {
             let absolute_path = workspace_root.join(package_path);
-            let mut bytes = Vec::new();
-            File::open(&absolute_path)
-                .map_err(|_| "package.missingEntry".to_string())?
-                .read_to_end(&mut bytes)
-                .map_err(|_| "package.readFailed".to_string())?;
             zip.start_file(package_path, options)
                 .map_err(|_| "save.failed".to_string())?;
-            zip.write_all(&bytes)
-                .map_err(|_| "save.failed".to_string())?;
+            let written = copy_limited(
+                File::open(&absolute_path).map_err(|_| "package.missingEntry".to_string())?,
+                &mut zip,
+                "package.readFailed",
+                "save.failed",
+            )?;
+            track_package_bytes(&mut total_bytes, written)?;
         }
 
         if !preserved_files.is_empty() {
@@ -125,20 +139,17 @@ pub fn write_mdoc_package(input: PackageWriteInput) -> Result<PackageWriteResult
             let mut source_archive =
                 zip::ZipArchive::new(source_file).map_err(|_| "package.corrupted".to_string())?;
             for package_path in &preserved_files {
-                let mut source_entry = source_archive
+                let source_entry = source_archive
                     .by_name(package_path)
                     .map_err(|_| "package.missingEntry".to_string())?;
                 if source_entry.is_dir() {
                     return Err("package.missingEntry".to_string());
                 }
-                let mut bytes = Vec::new();
-                source_entry
-                    .read_to_end(&mut bytes)
-                    .map_err(|_| "package.readFailed".to_string())?;
                 zip.start_file(package_path, options)
                     .map_err(|_| "save.failed".to_string())?;
-                zip.write_all(&bytes)
-                    .map_err(|_| "save.failed".to_string())?;
+                let written =
+                    copy_limited(source_entry, &mut zip, "package.readFailed", "save.failed")?;
+                track_package_bytes(&mut total_bytes, written)?;
             }
         }
 
@@ -804,6 +815,90 @@ mod tests {
             })
             .unwrap_err(),
             "package.missingEntry"
+        );
+        assert!(!output.with_extension("mdoc.tmp").exists());
+        assert!(!output.exists());
+    }
+
+    #[test]
+    fn rejects_package_output_above_resource_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("workspace");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("document.md"), "x".repeat(2048)).unwrap();
+        let output = dir.path().join("report.mdoc");
+
+        assert_eq!(
+            write_mdoc_package(PackageWriteInput {
+                workspace_root: root.to_string_lossy().to_string(),
+                output_path: output.to_string_lossy().to_string(),
+                entry: "document.md".to_string(),
+                files: vec!["document.md".to_string()],
+                manifest: None,
+                source_package_path: None,
+                preserved_files: Vec::new(),
+            })
+            .unwrap_err(),
+            "package.limitExceeded"
+        );
+        assert!(!output.with_extension("mdoc.tmp").exists());
+        assert!(!output.exists());
+    }
+
+    #[test]
+    fn rejects_package_output_above_entry_count_budget_before_reading_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("workspace");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("document.md"), "# Hello").unwrap();
+        let output = dir.path().join("report.mdoc");
+        let mut files = vec!["document.md".to_string()];
+        files.extend((0..16).map(|index| format!("assets/{index}.png")));
+
+        assert_eq!(
+            write_mdoc_package(PackageWriteInput {
+                workspace_root: root.to_string_lossy().to_string(),
+                output_path: output.to_string_lossy().to_string(),
+                entry: "document.md".to_string(),
+                files,
+                manifest: None,
+                source_package_path: None,
+                preserved_files: Vec::new(),
+            })
+            .unwrap_err(),
+            "package.limitExceeded"
+        );
+        assert!(!output.with_extension("mdoc.tmp").exists());
+        assert!(!output.exists());
+    }
+
+    #[test]
+    fn rejects_package_output_above_total_uncompressed_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("workspace");
+        fs::create_dir_all(root.join("assets")).unwrap();
+        let chunk = "x".repeat(800);
+        fs::write(root.join("document.md"), &chunk).unwrap();
+        let mut files = vec!["document.md".to_string()];
+        for index in 0..4 {
+            let file_name = format!("assets/{index}.png");
+            fs::write(root.join(&file_name), &chunk).unwrap();
+            files.push(file_name);
+        }
+        let output = dir.path().join("report.mdoc");
+
+        assert_eq!(
+            write_mdoc_package(PackageWriteInput {
+                workspace_root: root.to_string_lossy().to_string(),
+                output_path: output.to_string_lossy().to_string(),
+                entry: "document.md".to_string(),
+                files,
+                manifest: None,
+                source_package_path: None,
+                preserved_files: Vec::new(),
+            })
+            .unwrap_err(),
+            "package.limitExceeded"
         );
         assert!(!output.with_extension("mdoc.tmp").exists());
         assert!(!output.exists());

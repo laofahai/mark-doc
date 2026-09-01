@@ -70,3 +70,8 @@ manifest presentation resource such as `presentation.print` or
 `presentation.docxReference` is missing, readers should report an integrity
 warning and still open the Markdown entry when it is present. Writers must not
 create a new package whose manifest points at resources that are not included.
+
+Implementations should enforce resource limits before extracting or writing a
+package. A package that exceeds entry-count, single-resource, or total
+uncompressed-size limits should be rejected as unsafe to process rather than
+treated as a recoverable content error.

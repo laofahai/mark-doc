@@ -35,3 +35,12 @@ export function isOk<T>(result: Result<T>): result is { ok: true; value: T } {
 export function isErr<T>(result: Result<T>): result is { ok: false; error: DocumentError } {
   return !result.ok
 }
+
+export function errorCauseMatches(cause: unknown, code: string): boolean {
+  if (cause === code) return true
+  if (cause instanceof Error && cause.message === code) return true
+  if (typeof cause !== 'object' || cause === null) return false
+  if ('code' in cause && cause.code === code) return true
+  if ('message' in cause && cause.message === code) return true
+  return false
+}

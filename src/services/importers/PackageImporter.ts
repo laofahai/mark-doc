@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import { err, ok, type Result } from '../document/errors'
+import { err, errorCauseMatches, ok, type Result } from '../document/errors'
 import type { DocumentModel } from '../document/model'
 import { createTemporaryWorkspace, resolveWorkspacePath } from '../document/workspace-service'
 import { findLocalAssetReferences } from '../assets/AssetManager'
@@ -34,10 +34,17 @@ interface PackageExtractCommandResult extends PackageInspectResult {
 }
 
 let documentCounter = 0
+const PACKAGE_LIMIT_EXCEEDED = 'package.limitExceeded'
 
 function nextDocumentId() {
   documentCounter += 1
   return `package-document-${documentCounter}`
+}
+
+function packageOpenError(path: string, cause: unknown): Result<never> {
+  return errorCauseMatches(cause, PACKAGE_LIMIT_EXCEEDED)
+    ? err(PACKAGE_LIMIT_EXCEEDED, { messageKey: 'errors.package.limitExceeded', params: { path }, cause })
+    : err('package.openFailed', { messageKey: 'errors.package.openFailed', params: { path }, cause })
 }
 
 export class PackageImporter {
@@ -49,7 +56,7 @@ export class PackageImporter {
       }
       return ok(result)
     } catch (cause) {
-      return err('package.openFailed', { messageKey: 'errors.package.openFailed', params: { path }, cause })
+      return packageOpenError(path, cause)
     }
   }
 
@@ -61,7 +68,7 @@ export class PackageImporter {
       }
       return ok(result)
     } catch (cause) {
-      return err('package.openFailed', { messageKey: 'errors.package.openFailed', params: { path }, cause })
+      return packageOpenError(path, cause)
     }
   }
 
@@ -97,7 +104,7 @@ export class PackageImporter {
         dirty: { markdown: false, assets: false, presentation: false },
       })
     } catch (cause) {
-      return err('package.openFailed', { messageKey: 'errors.package.openFailed', params: { path }, cause })
+      return packageOpenError(path, cause)
     }
   }
 
@@ -109,6 +116,7 @@ export class PackageImporter {
       })
       return { result, recovered: false }
     } catch (extractCause) {
+      if (errorCauseMatches(extractCause, PACKAGE_LIMIT_EXCEEDED)) throw extractCause
       try {
         const result = await invoke<PackageExtractCommandResult>('recover_mdoc_package', {
           packagePath: path,
@@ -116,6 +124,7 @@ export class PackageImporter {
         })
         return { result, recovered: true }
       } catch (recoveryCause) {
+        if (errorCauseMatches(recoveryCause, PACKAGE_LIMIT_EXCEEDED)) throw recoveryCause
         throw { extractCause, recoveryCause }
       }
     }
