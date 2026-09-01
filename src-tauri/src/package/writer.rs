@@ -81,6 +81,7 @@ pub fn write_mdoc_package(input: PackageWriteInput) -> Result<PackageWriteResult
         })
         .cloned()
         .collect::<BTreeSet<_>>();
+    validate_manifest_resource_entries(&manifest, &packaged_files, &preserved_files)?;
 
     let file = File::create(&tmp_path).map_err(|_| "save.failed".to_string())?;
     let write_result = (|| {
@@ -124,11 +125,11 @@ pub fn write_mdoc_package(input: PackageWriteInput) -> Result<PackageWriteResult
             let mut source_archive =
                 zip::ZipArchive::new(source_file).map_err(|_| "package.corrupted".to_string())?;
             for package_path in &preserved_files {
-                let Ok(mut source_entry) = source_archive.by_name(package_path) else {
-                    continue;
-                };
+                let mut source_entry = source_archive
+                    .by_name(package_path)
+                    .map_err(|_| "package.missingEntry".to_string())?;
                 if source_entry.is_dir() {
-                    continue;
+                    return Err("package.missingEntry".to_string());
                 }
                 let mut bytes = Vec::new();
                 source_entry
@@ -162,6 +163,30 @@ pub fn write_mdoc_package(input: PackageWriteInput) -> Result<PackageWriteResult
             .to_str()
             .map(|s| s.to_string()),
     })
+}
+
+fn validate_manifest_resource_entries(
+    manifest: &MarkDocManifest,
+    packaged_files: &BTreeSet<String>,
+    preserved_files: &BTreeSet<String>,
+) -> Result<(), String> {
+    let Some(presentation) = manifest.presentation.as_ref() else {
+        return Ok(());
+    };
+
+    for package_path in [&presentation.print, &presentation.docx_reference]
+        .into_iter()
+        .flatten()
+    {
+        if !is_safe_package_path(package_path) {
+            return Err("package.unsafePath".to_string());
+        }
+        if !packaged_files.contains(package_path) && !preserved_files.contains(package_path) {
+            return Err("package.missingEntry".to_string());
+        }
+    }
+
+    Ok(())
 }
 
 fn replace_package(
@@ -530,6 +555,83 @@ mod tests {
         assert!(archive.by_name("assets/icon.svg").is_ok());
         assert!(archive.by_name("../unsafe.txt").is_err());
         assert!(archive.by_name("https://example.com/remote.css").is_err());
+    }
+
+    #[test]
+    fn fails_when_requested_preserved_resource_is_missing_from_source_package() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = dir.path().join("original.mdoc");
+        let workspace = dir.path().join("workspace");
+        let output = original.clone();
+        let manifest = MarkDocManifest::new("document.md");
+        {
+            let file = File::create(&original).unwrap();
+            let mut zip = zip::ZipWriter::new(file);
+            let options = SimpleFileOptions::default();
+            zip.start_file("manifest.json", options).unwrap();
+            zip.write_all(&serde_json::to_vec(&manifest).unwrap())
+                .unwrap();
+            zip.start_file("document.md", options).unwrap();
+            zip.write_all(b"# Original").unwrap();
+            zip.finish().unwrap();
+        }
+        fs::create_dir_all(&workspace).unwrap();
+        fs::write(workspace.join("document.md"), "# Saved").unwrap();
+
+        assert_eq!(
+            write_mdoc_package(PackageWriteInput {
+                workspace_root: workspace.to_string_lossy().to_string(),
+                output_path: output.to_string_lossy().to_string(),
+                entry: "document.md".to_string(),
+                files: vec!["document.md".to_string()],
+                manifest: Some(manifest),
+                source_package_path: Some(original.to_string_lossy().to_string()),
+                preserved_files: vec!["presentation/missing.css".to_string()],
+            })
+            .unwrap_err(),
+            "package.missingEntry"
+        );
+
+        let mut archive = ZipArchive::new(File::open(output).unwrap()).unwrap();
+        let mut document = String::new();
+        archive
+            .by_name("document.md")
+            .unwrap()
+            .read_to_string(&mut document)
+            .unwrap();
+        assert_eq!(document, "# Original");
+        assert!(!original.with_extension("mdoc.tmp").exists());
+    }
+
+    #[test]
+    fn rejects_manifest_presentation_resources_missing_from_output_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("workspace");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("document.md"), "# Hello").unwrap();
+        let output = dir.path().join("report.mdoc");
+        let mut manifest = MarkDocManifest::new("document.md");
+        manifest.presentation = Some(crate::package::manifest::ManifestPresentation {
+            print: Some("presentation/print.css".to_string()),
+            docx_reference: Some("presentation/reference.docx".to_string()),
+            extensions: serde_json::Map::new(),
+        });
+
+        assert_eq!(
+            write_mdoc_package(PackageWriteInput {
+                workspace_root: root.to_string_lossy().to_string(),
+                output_path: output.to_string_lossy().to_string(),
+                entry: "document.md".to_string(),
+                files: vec!["document.md".to_string()],
+                manifest: Some(manifest),
+                source_package_path: None,
+                preserved_files: Vec::new(),
+            })
+            .unwrap_err(),
+            "package.missingEntry"
+        );
+        assert!(!output.exists());
+        assert!(!output.with_extension("mdoc.tmp").exists());
     }
 
     #[test]

@@ -167,6 +167,7 @@ export default {
       invalidManifest: 'MarkDoc 文档清单无效：{{path}}',
       openFailed: '打开 MarkDoc 文档包失败：{{path}}',
       unsafePath: '文档包包含不安全路径：{{path}}',
+      assetCopyFailed: '保存失败：无法打包资源 {{path}}，当前内容已保留在恢复草稿中',
     },
     save: {
       failed: '保存失败，但当前内容已保留在恢复草稿中',

@@ -12,6 +12,22 @@ import { createTemporaryWorkspace } from './workspace-service'
 import { fileDialogLabels } from '../../locales/file-dialog-labels'
 import { copyFile, readTextFile, selectSavePath, writeTextFile } from '../native-file'
 
+class PackageAssetCopyError extends Error {
+  constructor(readonly resourcePath: string, readonly originalCause: unknown) {
+    super(`Failed to copy package resource: ${resourcePath}`)
+    this.name = 'PackageAssetCopyError'
+  }
+}
+
+function toAssetCopySaveError(cause: unknown): Result<never> | null {
+  if (!(cause instanceof PackageAssetCopyError)) return null
+  return err('save.failed', {
+    messageKey: 'errors.package.assetCopyFailed',
+    params: { path: cause.resourcePath },
+    cause: cause.originalCause,
+  })
+}
+
 export interface OpenDocumentResult extends DocumentSession {
   resourceSuggestion?: {
     kind: 'suggest-mdoc'
@@ -101,6 +117,8 @@ export class DocumentService {
       if (!exported.ok) return exported
       return ok({ ...document, source: { type: 'package', packagePath, extractedWorkspacePath: workspace.rootPath! }, workspace, dirty: { markdown: false, assets: false, presentation: false } })
     } catch (cause) {
+      const assetCopyError = toAssetCopySaveError(cause)
+      if (assetCopyError) return assetCopyError
       return err('save.failed', { messageKey: 'errors.save.failed', cause })
     }
   }
@@ -127,6 +145,8 @@ export class DocumentService {
       if (!exported.ok) return exported
       return ok({ ...document, source: { type: 'package', packagePath, extractedWorkspacePath: workspace.rootPath! }, workspace, dirty: { markdown: false, assets: false, presentation: false } })
     } catch (cause) {
+      const assetCopyError = toAssetCopySaveError(cause)
+      if (assetCopyError) return assetCopyError
       return err('save.failed', { messageKey: 'errors.save.failed', cause })
     }
   }
@@ -175,8 +195,8 @@ export class DocumentService {
       try {
         await copyFile(`${document.workspace.rootPath}/${reference}`, targetPath)
         copiedReferences.push(reference)
-      } catch {
-        // Missing local resources should not prevent the package from preserving document.md.
+      } catch (cause) {
+        throw new PackageAssetCopyError(reference, cause)
       }
     }
     return { ...workspace, packageEntries: ['document.md', ...copiedReferences] }

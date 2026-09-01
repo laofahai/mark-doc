@@ -183,16 +183,19 @@ describe('DocumentService package saves', () => {
     )
   })
 
-  it('saves the package even when a referenced local asset is missing', async () => {
+  it('fails the package save when a referenced local asset cannot be copied', async () => {
     vi.mocked(copyFile).mockRejectedValueOnce(new Error('missing asset'))
     const service = new DocumentService()
 
     const saved = await service.saveDocument(markdownDocument())
 
-    expect(saved.ok).toBe(true)
-    const writeCall = vi.mocked(invoke).mock.calls.find(([command]) => command === 'write_mdoc_package')
-    const input = (writeCall?.[1] as { input: { files: string[] } }).input
-    expect(input.files).toEqual(['document.md'])
+    expect(saved.ok).toBe(false)
+    if (!saved.ok) {
+      expect(saved.error.code).toBe('save.failed')
+      expect(saved.error.messageKey).toBe('errors.package.assetCopyFailed')
+      expect(saved.error.params).toEqual({ path: 'assets/diagram.png' })
+    }
+    expect(invoke).not.toHaveBeenCalledWith('write_mdoc_package', expect.anything())
   })
 
   it('can explicitly save clean plain Markdown as an mdoc package from the suggestion action', async () => {
