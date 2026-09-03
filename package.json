@@ -13,11 +13,12 @@
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:scripts": "node --test scripts/**/*.test.mjs",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "version:sync": "node scripts/sync-version.mjs",
     "release:check": "node scripts/validate-release-config.mjs",
-    "ci": "pnpm run release:check && pnpm test && pnpm run lint && pnpm run build:check",
+    "ci": "pnpm run release:check && pnpm run test:scripts && pnpm test && pnpm run lint && pnpm run build:check && cargo test --manifest-path src-tauri/Cargo.toml",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"

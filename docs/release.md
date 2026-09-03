@@ -17,15 +17,14 @@ Sync them with:
 pnpm run version:sync v0.1.2
 ```
 
+Commit the synchronized version files before tagging. The release workflow
+validates the committed version and does not mutate source files while
+publishing.
+
 ## Required Checks
 
 ```bash
-pnpm run release:check
-pnpm test
-pnpm run lint
-pnpm run build:check
-cd src-tauri
-cargo test
+pnpm run ci
 ```
 
 ## GitHub Release Flow
@@ -38,8 +37,9 @@ git push origin v0.1.2
 ```
 
 `.github/workflows/release.yml` builds platform installers with
-`tauri-apps/tauri-action`, publishes the GitHub Release, and uploads updater
-metadata.
+`tauri-apps/tauri-action`, uploads installers and updater metadata to a draft
+GitHub Release, and publishes the release only after every platform build
+finishes successfully.
 
 Required GitHub Actions secrets:
 

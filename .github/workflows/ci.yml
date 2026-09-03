@@ -39,9 +39,4 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run release:check
-      - run: pnpm test
-      - run: pnpm run lint
-      - run: pnpm run build:check
-      - run: cargo test
-        working-directory: src-tauri
+      - run: pnpm run ci

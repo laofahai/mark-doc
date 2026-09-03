@@ -12,12 +12,67 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.inputs.version || github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.release-version.outputs.value }}
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install Linux desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Resolve release version
+        id: release-version
+        shell: bash
+        env:
+          WORKFLOW_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if [ -n "$WORKFLOW_VERSION" ]; then
+            echo "value=$WORKFLOW_VERSION" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          fi
+
+      - run: pnpm run release:check -- --release-version ${{ steps.release-version.outputs.value }}
+      - run: pnpm run ci
+
   publish:
     name: Publish ${{ matrix.name }}
+    needs: preflight
     runs-on: ${{ matrix.platform }}
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -66,21 +121,7 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - run: pnpm install --frozen-lockfile
-
-      - name: Resolve release version
-        id: release-version
-        shell: bash
-        env:
-          WORKFLOW_VERSION: ${{ github.event.inputs.version }}
-        run: |
-          if [ -n "$WORKFLOW_VERSION" ]; then
-            echo "value=$WORKFLOW_VERSION" >> "$GITHUB_OUTPUT"
-          else
-            echo "value=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
-          fi
-
-      - run: node scripts/sync-version.mjs ${{ steps.release-version.outputs.value }}
-      - run: pnpm run release:check
+      - run: pnpm run release:check -- --release-version ${{ needs.preflight.outputs.version }}
 
       - uses: tauri-apps/tauri-action@v1
         env:
@@ -88,9 +129,25 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ steps.release-version.outputs.value }}
-          releaseName: MarkDoc ${{ steps.release-version.outputs.value }}
+          tagName: ${{ needs.preflight.outputs.version }}
+          releaseName: MarkDoc ${{ needs.preflight.outputs.version }}
           releaseBody: Signed desktop installers and updater metadata.
-          releaseDraft: false
+          releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+  publish-release:
+    name: Publish GitHub Release
+    needs:
+      - preflight
+      - publish
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Publish completed draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.preflight.outputs.version }}
+        run: gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --title "MarkDoc $RELEASE_TAG" --notes "Signed desktop installers and updater metadata."

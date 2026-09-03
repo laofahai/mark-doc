@@ -25,6 +25,12 @@ function requireIncludes(errors, label, source, expected) {
   }
 }
 
+function requireNotIncludes(errors, label, source, expected, message) {
+  if (source.includes(expected)) {
+    errors.push(message || `${label} must not include ${expected}`)
+  }
+}
+
 function rejectReadmeInternals(errors, label, source) {
   const internalMarkers = [
     '.github/workflows',
@@ -85,11 +91,7 @@ async function validateWorkflow(root, errors) {
   } else {
     const ci = await readText(ciPath)
     requireIncludes(errors, 'ci.yml', ci, 'pnpm/action-setup@v4')
-    requireIncludes(errors, 'ci.yml', ci, 'pnpm run release:check')
-    requireIncludes(errors, 'ci.yml', ci, 'pnpm test')
-    requireIncludes(errors, 'ci.yml', ci, 'pnpm run lint')
-    requireIncludes(errors, 'ci.yml', ci, 'pnpm run build:check')
-    requireIncludes(errors, 'ci.yml', ci, 'cargo test')
+    requireIncludes(errors, 'ci.yml', ci, 'pnpm run ci')
   }
 
   if (!await exists(releasePath)) {
@@ -101,12 +103,25 @@ async function validateWorkflow(root, errors) {
   requireIncludes(errors, 'release.yml', release, 'tags:')
   requireIncludes(errors, 'release.yml', release, "'v*.*.*'")
   requireIncludes(errors, 'release.yml', release, 'contents: write')
+  requireIncludes(errors, 'release.yml', release, 'concurrency:')
   requireIncludes(errors, 'release.yml', release, 'pnpm/action-setup@v4')
-  requireIncludes(errors, 'release.yml', release, 'node scripts/sync-version.mjs')
+  requireIncludes(errors, 'release.yml', release, 'pnpm run release:check -- --release-version')
+  requireIncludes(errors, 'release.yml', release, 'pnpm run ci')
+  requireIncludes(errors, 'release.yml', release, 'needs: preflight')
   requireIncludes(errors, 'release.yml', release, 'tauri-apps/tauri-action@v1')
   requireIncludes(errors, 'release.yml', release, 'TAURI_SIGNING_PRIVATE_KEY')
   requireIncludes(errors, 'release.yml', release, 'TAURI_SIGNING_PRIVATE_KEY_PASSWORD')
-  requireIncludes(errors, 'release.yml', release, 'releaseDraft: false')
+  requireIncludes(errors, 'release.yml', release, 'releaseDraft: true')
+  requireIncludes(errors, 'release.yml', release, 'publish-release:')
+  requireIncludes(errors, 'release.yml', release, 'gh release edit')
+  requireNotIncludes(errors, 'release.yml', release, 'node scripts/sync-version.mjs', 'release.yml must not mutate source versions during publish')
+  requireNotIncludes(errors, 'release.yml', release, 'releaseDraft: false', 'release.yml must publish installers as a draft before final release')
+  if (!release.includes('releaseDraft: true')) {
+    errors.push('release.yml must publish installers as a draft before final release')
+  }
+  if (!release.includes('pnpm run ci')) {
+    errors.push('release.yml must run the full pnpm run ci preflight before publish')
+  }
 }
 
 async function validateMaintainerDocs(root, errors) {
@@ -121,7 +136,15 @@ async function validateMaintainerDocs(root, errors) {
   requireIncludes(errors, 'docs/release.md', releaseDocs, 'latest.json')
 }
 
-export async function validateReleaseConfig(root = process.cwd()) {
+function releaseVersionTag(version) {
+  return `v${version}`
+}
+
+function isStableReleaseTag(version) {
+  return /^v\d+\.\d+\.\d+$/.test(version)
+}
+
+export async function validateReleaseConfig(root = process.cwd(), options = {}) {
   const errors = []
   const pkg = await readJson(join(root, 'package.json'))
   const tauri = await readJson(join(root, 'src-tauri/tauri.conf.json'))
@@ -142,6 +165,25 @@ export async function validateReleaseConfig(root = process.cwd()) {
 
   if (pkg.scripts?.['release:check'] !== 'node scripts/validate-release-config.mjs') {
     errors.push('package.json must define release:check')
+  }
+
+  if (pkg.scripts?.['test:scripts'] !== 'node --test scripts/**/*.test.mjs') {
+    errors.push('package.json must define test:scripts')
+  }
+
+  const expectedCiScript = 'pnpm run release:check && pnpm run test:scripts && pnpm test && pnpm run lint && pnpm run build:check && cargo test --manifest-path src-tauri/Cargo.toml'
+  if (pkg.scripts?.ci !== expectedCiScript) {
+    errors.push('package.json must define the full ci check')
+  }
+
+  const committedReleaseVersion = releaseVersionTag(pkg.version)
+  if (options.releaseVersion !== undefined) {
+    if (!isStableReleaseTag(options.releaseVersion)) {
+      errors.push(`Release version ${options.releaseVersion} must be a stable SemVer tag like v1.2.3`)
+    }
+    if (options.releaseVersion !== committedReleaseVersion) {
+      errors.push(`Release version ${options.releaseVersion} must match committed source version ${committedReleaseVersion}`)
+    }
   }
 
   if (tauri.bundle?.createUpdaterArtifacts !== true) {
@@ -166,7 +208,9 @@ export async function validateReleaseConfig(root = process.cwd()) {
 }
 
 async function main() {
-  const errors = await validateReleaseConfig(process.cwd())
+  const releaseVersionIndex = process.argv.indexOf('--release-version')
+  const releaseVersion = releaseVersionIndex >= 0 ? process.argv[releaseVersionIndex + 1] : undefined
+  const errors = await validateReleaseConfig(process.cwd(), { releaseVersion })
   if (errors.length > 0) {
     for (const error of errors) {
       console.error(`- ${error}`)

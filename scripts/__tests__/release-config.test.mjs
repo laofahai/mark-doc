@@ -17,7 +17,9 @@ async function writeFixtureProject() {
     packageManager: 'pnpm@10.32.1',
     scripts: {
       'release:check': 'node scripts/validate-release-config.mjs',
+      'test:scripts': 'node --test scripts/**/*.test.mjs',
       'version:sync': 'node scripts/sync-version.mjs',
+      ci: 'pnpm run release:check && pnpm run test:scripts && pnpm test && pnpm run lint && pnpm run build:check && cargo test --manifest-path src-tauri/Cargo.toml',
     },
   }, null, 2)}\n`)
   await writeFile(join(root, 'src-tauri/Cargo.toml'), '[package]\nname = "mark-doc"\nversion = "0.1.0"\n')
@@ -42,11 +44,7 @@ async function writeFixtureProject() {
     '  validate:',
     '    steps:',
     '      - uses: pnpm/action-setup@v4',
-    '      - run: pnpm run release:check',
-    '      - run: pnpm test',
-    '      - run: pnpm run lint',
-    '      - run: pnpm run build:check',
-    '      - run: cargo test',
+    '      - run: pnpm run ci',
     '',
   ].join('\n'))
   await writeFile(join(root, '.github/workflows/release.yml'), [
@@ -56,22 +54,38 @@ async function writeFixtureProject() {
     '    tags:',
     "      - 'v*.*.*'",
     'permissions:',
-    '  contents: write',
+    '  contents: read',
+    'concurrency:',
+    '  group: release-${{ github.event.inputs.version || github.ref_name }}',
+    '  cancel-in-progress: false',
     'jobs:',
+    '  preflight:',
+    '    steps:',
+    '      - uses: pnpm/action-setup@v4',
+    '      - run: pnpm run ci',
     '  publish:',
+    '    needs: preflight',
+    '    permissions:',
+    '      contents: write',
     '    strategy:',
     '      matrix:',
     '        platform: [macos-latest, ubuntu-22.04, windows-latest]',
     '    steps:',
     '      - uses: pnpm/action-setup@v4',
-    '      - run: node scripts/sync-version.mjs ${{ github.ref_name }}',
+    '      - run: pnpm run release:check -- --release-version ${{ github.ref_name }}',
     '      - uses: tauri-apps/tauri-action@v1',
     '        with:',
-    '          releaseDraft: false',
+    '          releaseDraft: true',
     '        env:',
     '          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}',
     '          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}',
     '          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}',
+    '  publish-release:',
+    '    needs: publish',
+    '    permissions:',
+    '      contents: write',
+    '    steps:',
+    '      - run: gh release edit ${{ github.ref_name }} --draft=false',
     '',
   ].join('\n'))
   await writeFile(join(root, 'README.md'), [
@@ -121,6 +135,43 @@ describe('release configuration', () => {
     const root = await writeFixtureProject()
     try {
       assert.deepEqual(await validateReleaseConfig(root), [])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects release workflows that mutate source versions or publish partial releases', async () => {
+    const root = await writeFixtureProject()
+    try {
+      await writeFile(join(root, '.github/workflows/release.yml'), [
+        'name: Release',
+        'jobs:',
+        '  publish:',
+        '    steps:',
+        '      - run: node scripts/sync-version.mjs ${{ github.ref_name }}',
+        '      - run: pnpm run release:check',
+        '      - uses: tauri-apps/tauri-action@v1',
+        '        with:',
+        '          releaseDraft: false',
+        '',
+      ].join('\n'))
+
+      const errors = await validateReleaseConfig(root)
+
+      assert.ok(errors.includes('release.yml must not mutate source versions during publish'))
+      assert.ok(errors.includes('release.yml must publish installers as a draft before final release'))
+      assert.ok(errors.includes('release.yml must run the full pnpm run ci preflight before publish'))
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects release tags that do not match the committed source version', async () => {
+    const root = await writeFixtureProject()
+    try {
+      const errors = await validateReleaseConfig(root, { releaseVersion: 'v0.2.0' })
+
+      assert.ok(errors.includes('Release version v0.2.0 must match committed source version v0.1.0'))
     } finally {
       await rm(root, { recursive: true, force: true })
     }
