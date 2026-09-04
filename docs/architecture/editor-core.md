@@ -18,8 +18,9 @@ pipeline, security policy, i18n, and document commands. The browser editing
 model, selection, IME behavior, transaction system, history, and schema mechanics
 should come from ProseMirror through Tiptap.
 
-Vditor remains useful only as the current legacy adapter during the internal
-cutover. It is not the final editor architecture.
+Vditor is not part of the final editor architecture. Do not preserve it as an
+alternate production adapter. The implementation should replace it directly and
+remove the old coupling as part of the editor-core work.
 
 Tiptap is not the storage protocol. ProseMirror JSON is not the storage protocol.
 Tiptap's Markdown extension is not automatically trusted as the canonical codec.
@@ -47,16 +48,16 @@ through Vditor's private DOM instead of a stable editor contract. More toolbar
 work, block interactions, asset handling, AI commands, and presentation controls
 would add more coupling.
 
-## Legacy Coupling To Remove
+## Vditor Coupling To Remove
 
-The final editor migration must remove these production dependencies:
+The editor-core migration must remove these dependencies:
 
 - direct `vditor` and `vditor/dist/index.css` imports in the active editor path
 - Vditor toolbar DOM relocation from `editor.vditor.toolbar.element`
 - Vditor toolbar entry names as MarkDoc command identifiers
 - SVG strings built for Vditor toolbar consumption
 - `vditor.currentMode`, `vditor.wysiwyg`, `vditor.ir`, and stored Vditor ranges
-  outside the legacy adapter
+  in application code
 - Lute monkey patching for `Md2VditorDOM`, `Md2VditorIRDOM`,
   `SpinVditorDOM`, `SpinVditorIRDOM`, `VditorDOM2Md`, and `VditorIRDOM2Md`
 - `.vditor-*` selectors in sidebar outline, keyboard routing, right-click
@@ -65,8 +66,8 @@ The final editor migration must remove these production dependencies:
 - tests whose only assertion is that Vditor internals were manipulated
 
 The current general-purpose resource policy code can be preserved if it remains
-editor-agnostic. The Vditor/Lute integration branch must move under a legacy
-adapter and then be deleted when Tiptap reaches parity.
+editor-agnostic. The Vditor/Lute integration branch should be replaced by
+schema/node-view/codec behavior in the new editor core, then deleted.
 
 ## Why Not Build The Engine Ourselves
 
@@ -132,8 +133,8 @@ Milkdown
   cannot be fixed locally.
 
 Vditor
-  Keep only as legacy adapter during the internal cutover.
-  Do not build new product behavior directly on Vditor DOM.
+  Remove from the production editor path.
+  Do not keep it as an alternate adapter.
 
 Self-built contenteditable engine
   Do not pursue.
@@ -163,7 +164,7 @@ Rules:
 - Save operations call the editor adapter for the latest Markdown before writing.
 - Tiptap JSON is runtime state only.
 - `.mdoc` packages store clean Markdown and explicit resources.
-- Base64 image data is allowed only as transient paste/import input or as legacy
+- Base64 image data is allowed only as transient paste/import input or historical
   document content. It must not be the default persisted image strategy.
 - Package paths remain UTF-8 relative paths with `/` separators.
 - Absolute paths, drive-prefix paths, backslashes, and `..` traversal remain
@@ -210,8 +211,7 @@ Markdown as raw blocks only when it can round-trip without executing unsafe HTML
 
 If a fixture fails, do not silently normalize the document into a lossy shape.
 Either add a MarkDoc codec rule, mark the syntax unsupported with a visible
-import/open warning, or keep using the legacy editor for that document until the
-loss is fixed.
+import/open warning, or block the editor-core switch until the loss is fixed.
 
 ## Editor Adapter Contract
 
@@ -280,8 +280,6 @@ src/components/Editor/
   EditorBubbleToolbar.tsx
   EditorPopoverLayer.tsx
   TiptapMarkDocEditor.tsx
-  legacy/VditorEditor.tsx
-  legacy/VditorEditorAdapter.ts
 ```
 
 Responsibilities:
@@ -362,7 +360,7 @@ Undo and redo can stay keyboard-first. They should not be toolbar buttons unless
 user testing proves they are needed.
 
 The toolbar must be implementation-neutral. Button IDs are MarkDoc command IDs,
-not Tiptap extension names and not legacy Vditor toolbar names.
+not Tiptap extension names and not Vditor toolbar names.
 
 ## Color And Background Marks
 
@@ -460,25 +458,25 @@ Rules:
 Editor feature tests should assert stable command IDs and locale keys, not
 English or Chinese display text.
 
-## Cutover Order
+## Direct Replacement Order
 
 The final target is the Tiptap/ProseMirror editor core described above. The
-implementation order exists only to keep the app working while the internal core
-is replaced.
+implementation order is direct replacement, not a long-lived split editor
+architecture.
 
 ```text
-1. Freeze the adapter contract and move current Vditor code under legacy/
-2. Add Tiptap editor core behind the same adapter contract
-3. Port toolbar, popovers, paste/upload, resource rendering, outline, and color
+1. Freeze and expand the adapter contract around MarkDoc command IDs
+2. Add Markdown fixtures and static guards before the editor swap
+3. Implement Tiptap editor core behind the adapter contract
+4. Port toolbar, popovers, paste/upload, resource rendering, outline, and color
    marks to the MarkDoc-owned shell and extensions
-4. Run both adapters against the same contract and Markdown fixture tests
-5. Switch the app to Tiptap when parity is reached
-6. Delete Vditor dependency, Vditor CSS, Vditor tests, and stale TipTap test
+5. Switch the active app editor to Tiptap
+6. Delete Vditor dependency, Vditor CSS, Vditor files, Vditor tests, and stale TipTap test
    aliases that no longer match installed packages
 ```
 
-Do not stop at a split architecture. The cleanup is part of the same final
-direction.
+Do not stop with Vditor kept on the side. The cleanup is part of the same final
+direction and should land with the editor-core replacement.
 
 ## Acceptance Criteria
 
@@ -518,12 +516,13 @@ Existing coverage to preserve:
 - command bar, sidebar, recovery/security panel, i18n, and native-file tests
   around current document workflows
 
-Missing coverage that must be added before switching the app to Tiptap:
+Missing coverage that must be added before switching the active app editor to
+Tiptap:
 
-- shared adapter contract tests that run against both legacy Vditor and Tiptap
-  adapters
-- static guard tests that fail if active production flows import `vditor`, query
-  `.vditor-*`, or include `src/styles/vditor.css`
+- adapter contract tests for the MarkDoc editor contract
+- static guard tests that fail if production flows import `vditor`, query
+  `.vditor-*`, include `src/styles/vditor.css`, or keep Vditor files in the
+  active editor tree
 - fixture-driven Markdown codec tests with golden input/output files
 - real `.mdoc` fixture tests for minimal packages, custom entries, assets,
   presentation resources, missing resources, corrupted packages, over-limit
