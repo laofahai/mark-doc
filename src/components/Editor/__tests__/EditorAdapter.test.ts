@@ -1,95 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { resolveEditorLanguage } from '../Editor'
-import { VditorEditorAdapter } from '../VditorEditorAdapter'
 import { PackageSecurityPolicy } from '../../../services/security/PackageSecurityPolicy'
-import { enforceRemoteResourcePolicy, getCanonicalEditorMarkdown, installRemoteResourceRenderBoundary, observeRemoteResourcePolicy, restoreBlockedResources } from '../resource-policy'
-
-describe('VditorEditorAdapter', () => {
-  it('gets and sets markdown without exposing Vditor to document services', () => {
-    const vditor = {
-      getValue: vi.fn(() => '# Hello'),
-      setValue: vi.fn(),
-      focus: vi.fn(),
-      insertValue: vi.fn(),
-    }
-    const adapter = new VditorEditorAdapter(vditor)
-
-    expect(adapter.getMarkdown()).toBe('# Hello')
-    adapter.setMarkdown('# Changed')
-
-    expect(vditor.setValue).toHaveBeenCalledWith('# Changed')
-  })
-
-  it('focuses the editor', () => {
-    const vditor = {
-      getValue: vi.fn(),
-      setValue: vi.fn(),
-      focus: vi.fn(),
-      insertValue: vi.fn(),
-    }
-    const adapter = new VditorEditorAdapter(vditor)
-
-    adapter.focus()
-
-    expect(vditor.focus).toHaveBeenCalledOnce()
-  })
-
-  it('inserts images using clean relative markdown references', () => {
-    const vditor = {
-      getValue: vi.fn(),
-      setValue: vi.fn(),
-      focus: vi.fn(),
-      insertValue: vi.fn(),
-    }
-    const adapter = new VditorEditorAdapter(vditor)
-
-    adapter.insertImage({
-      markdownPath: 'assets/a.png',
-      absolutePath: '/tmp/a.png',
-      kind: 'image',
-      mimeType: 'image/png',
-    })
-
-    expect(vditor.insertValue).toHaveBeenCalledWith('![image](assets/a.png)')
-  })
-
-  it('inserts attachments using clean relative markdown references', () => {
-    const vditor = {
-      getValue: vi.fn(),
-      setValue: vi.fn(),
-      focus: vi.fn(),
-      insertValue: vi.fn(),
-    }
-    const adapter = new VditorEditorAdapter(vditor)
-
-    adapter.insertAttachment({
-      markdownPath: 'assets/report.pdf',
-      absolutePath: '/tmp/report.pdf',
-      kind: 'attachment',
-      mimeType: 'application/pdf',
-    })
-
-    expect(vditor.insertValue).toHaveBeenCalledWith('[assets/report.pdf](assets/report.pdf)')
-  })
-})
-
-describe('resolveEditorLanguage', () => {
-  it('keeps the locale override stable when the ui language changes', () => {
-    expect(resolveEditorLanguage({
-      uiLanguage: 'zh',
-      editorLanguage: 'en_US',
-    }, 'zh')).toBe('en_US')
-    expect(resolveEditorLanguage({
-      uiLanguage: 'en',
-      editorLanguage: 'en_US',
-    }, 'en')).toBe('en_US')
-  })
-
-  it('falls back to the current i18n language when no editor override is supplied', () => {
-    expect(resolveEditorLanguage(undefined, 'en')).toBe('en_US')
-    expect(resolveEditorLanguage(undefined, 'zh')).toBe('zh_CN')
-  })
-})
+import {
+  enforceRemoteResourcePolicy,
+  observeRemoteResourcePolicy,
+  restoreBlockedResources,
+} from '../../../editor-core/resource-security'
 
 describe('rendered editor resource policy', () => {
   it('blocks Markdown-rendered remote images without changing canonical Markdown', () => {
@@ -151,6 +66,29 @@ describe('rendered editor resource policy', () => {
     expect(root.querySelector('#svg-xlink')?.hasAttribute('xlink:href')).toBe(false)
   })
 
+  it('removes event handler attributes from rendered HTML', () => {
+    const root = document.createElement('div')
+    root.innerHTML = '<img id="image" src="assets/image.png" onerror="alert(1)"><a id="link" href="https://example.com" onclick="alert(1)">x</a>'
+
+    enforceRemoteResourcePolicy(root, PackageSecurityPolicy.default())
+
+    expect(root.querySelector('#image')?.hasAttribute('onerror')).toBe(false)
+    expect(root.querySelector('#link')?.hasAttribute('onclick')).toBe(false)
+  })
+
+  it('removes active scriptable resource URLs even when remote resources are allowed', () => {
+    const root = document.createElement('div')
+    root.innerHTML = [
+      '<a id="script-link" href="javascript:alert(1)">bad</a>',
+      '<img id="data-svg" src="data:image/svg+xml;base64,PHN2Zy8+">',
+    ].join('')
+
+    enforceRemoteResourcePolicy(root, PackageSecurityPolicy.default().allowResourceType('other').allowResourceType('image'))
+
+    expect(root.querySelector('#script-link')?.hasAttribute('href')).toBe(false)
+    expect(root.querySelector('#data-svg')?.hasAttribute('src')).toBe(false)
+  })
+
   it('observes newly inserted iframe srcdoc and SVG remote href attributes', async () => {
     const root = document.createElement('div')
     const disconnect = observeRemoteResourcePolicy(root, () => PackageSecurityPolicy.default())
@@ -167,6 +105,18 @@ describe('rendered editor resource policy', () => {
 
     expect(frame.hasAttribute('srcdoc')).toBe(false)
     expect(image.hasAttribute('href')).toBe(false)
+    disconnect?.()
+  })
+
+  it('observes dangerous attributes added after initial render', async () => {
+    const root = document.createElement('div')
+    root.innerHTML = '<a id="link" href="assets/doc.md">x</a>'
+    const disconnect = observeRemoteResourcePolicy(root, () => PackageSecurityPolicy.default())
+
+    root.querySelector('#link')?.setAttribute('onclick', 'alert(1)')
+
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(root.querySelector('#link')?.hasAttribute('onclick')).toBe(false)
     disconnect?.()
   })
 
@@ -210,46 +160,5 @@ describe('rendered editor resource policy', () => {
     expect(resolveAssetUrl).not.toHaveBeenCalled()
     expect(root.querySelector('#inline')?.getAttribute('src')).toBe('data:image/png;base64,AQID')
     expect(root.querySelector('#inline')?.hasAttribute('data-markdoc-original-src')).toBe(false)
-  })
-
-  it('serializes canonical Markdown from a restored clone of the blocked editor DOM', () => {
-    const editable = document.createElement('div')
-    editable.innerHTML = '<img src="https://images.example.com/diagram.png">'
-    enforceRemoteResourcePolicy(editable, PackageSecurityPolicy.default())
-    const VditorDOM2Md = vi.fn((html: string) => html)
-    const editor = {
-      getValue: vi.fn(() => 'mutated'),
-      vditor: {
-        currentMode: 'wysiwyg',
-        wysiwyg: { element: editable },
-        ir: { element: editable },
-        lute: { VditorDOM2Md, VditorIRDOM2Md: vi.fn() },
-      },
-    }
-
-    expect(getCanonicalEditorMarkdown(editor)).toContain('src="https://images.example.com/diagram.png"')
-    expect(editor.getValue).not.toHaveBeenCalled()
-  })
-
-  it('sanitizes Vditor HTML before it reaches the editable renderer DOM', () => {
-    const editor = {
-      getValue: vi.fn(),
-      vditor: {
-        currentMode: 'wysiwyg',
-        wysiwyg: { element: document.createElement('div') },
-        ir: { element: document.createElement('div') },
-        lute: {
-          VditorDOM2Md: vi.fn(),
-          VditorIRDOM2Md: vi.fn(),
-          Md2VditorDOM: vi.fn(() => '<img src="https://images.example.com/diagram.png">'),
-        },
-      },
-    }
-
-    installRemoteResourceRenderBoundary(editor, () => PackageSecurityPolicy.default())
-    const rendered = editor.vditor.lute.Md2VditorDOM!('![remote](https://images.example.com/diagram.png)')
-
-    expect(rendered).not.toContain(' src=')
-    expect(rendered).toContain('data-markdoc-original-src="https://images.example.com/diagram.png"')
   })
 })

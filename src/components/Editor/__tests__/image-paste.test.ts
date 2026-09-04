@@ -86,7 +86,7 @@ describe('handleEditorImagePaste', () => {
     expect(insertValue).toHaveBeenCalledWith('![image](assets/pasted-public-png.png)')
   })
 
-  it('imports Vditor upload files through the same asset pipeline', async () => {
+  it('imports uploaded image files through the same asset pipeline', async () => {
     const png = new File([new Uint8Array([1])], 'screenshot.png', { type: 'image/png' })
     const txt = new File(['notes'], 'notes.txt', { type: 'text/plain' })
     const importImage = vi.fn().mockResolvedValue('assets/pasted-2.png')

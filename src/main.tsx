@@ -4,7 +4,6 @@ import App from './App';
 import './index.css';
 import './styles/shell.css';
 import './styles/editor.css';
-import './styles/vditor.css';
 import './styles/utilities.css';
 
 type TauriInternalWindow = Window & {
@@ -13,15 +12,9 @@ type TauriInternalWindow = Window & {
   }
 }
 
-// 生产环境禁用右键菜单、文本选中、F12
+// 生产环境禁用文本选中、F12；右键菜单由 App 级 hook 统一处理。
 // Cmd+Shift+D 可打开开发者工具（隐藏入口）
 if (import.meta.env.PROD) {
-  document.addEventListener('contextmenu', (e) => {
-    // 允许编辑器内的右键（vditor 需要）
-    if (!(e.target as HTMLElement).closest('.vditor')) {
-      e.preventDefault()
-    }
-  })
   document.addEventListener('keydown', (e) => {
     // 禁用 F12
     if (e.key === 'F12') e.preventDefault()
@@ -30,7 +23,7 @@ if (import.meta.env.PROD) {
   })
   // 禁用非编辑器区域的选中
   document.addEventListener('selectstart', (e) => {
-    if (!(e.target as HTMLElement).closest('.vditor')) {
+    if (!(e.target as HTMLElement).closest('[data-markdoc-editor-root]')) {
       e.preventDefault()
     }
   })

@@ -1,7 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-import { resolve } from 'path'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -17,7 +16,7 @@ export default defineConfig({
     css: true,
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     exclude: ['src-tauri/**', 'node_modules/**', 'dist/**'],
-    // Fix for TipTap v3 exports issue - inline all TipTap packages
+    // Keep TipTap's ESM packages transformed consistently in jsdom.
     deps: {
       inline: [
         /@tiptap\/.*/,
@@ -27,13 +26,6 @@ export default defineConfig({
         /@tiptap\/extension-.*/,
       ],
     },
-    resolve: {
-      alias: {
-        '@tiptap/react': resolve(__dirname, 'node_modules/@tiptap/react'),
-        '@tiptap/core': resolve(__dirname, 'node_modules/@tiptap/core'),
-      },
-    },
-    // Better module resolution for ESM packages
     esbuild: {
       target: 'es2020',
     },

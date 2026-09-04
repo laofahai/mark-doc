@@ -35,22 +35,6 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .manage(PendingFiles(Mutex::new(Vec::new())))
         .manage(file_access::PathGrantState::default())
-        .setup(|_app| {
-            // 生产环境禁用右键菜单
-            #[cfg(not(debug_assertions))]
-            {
-                if let Some(window) = _app.get_webview_window("main") {
-                    let _ = window.eval(
-                        r#"
-                        document.addEventListener('contextmenu', function(e) {
-                            if (!e.target.closest('.vditor')) e.preventDefault();
-                        }, true);
-                    "#,
-                    );
-                }
-            }
-            Ok(())
-        })
         .invoke_handler(tauri::generate_handler![
             converter::check_pandoc_available,
             converter::install_pandoc,

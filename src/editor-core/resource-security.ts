@@ -1,8 +1,10 @@
-import type { PackageSecurityPolicy, RemoteResourceType } from '../../services/security/PackageSecurityPolicy'
+import type { PackageSecurityPolicy, RemoteResourceType } from '../services/security/PackageSecurityPolicy'
 
 export type LocalResourceUrlResolver = (relativePath: string) => string | null | undefined
 
 const RESOURCE_ATTRIBUTES: Record<string, Array<{ attribute: string; type: RemoteResourceType }>> = {
+  A: [{ attribute: 'href', type: 'other' }],
+  AREA: [{ attribute: 'href', type: 'other' }],
   AUDIO: [{ attribute: 'src', type: 'other' }],
   EMBED: [{ attribute: 'src', type: 'other' }],
   IFRAME: [{ attribute: 'src', type: 'other' }],
@@ -15,6 +17,8 @@ const RESOURCE_ATTRIBUTES: Record<string, Array<{ attribute: string; type: Remot
 }
 
 const SVG_RESOURCE_ATTRIBUTES = ['href', 'xlink:href']
+const DANGEROUS_SCHEME_RE = /^\s*(?:javascript|vbscript):/i
+const DANGEROUS_DATA_URL_RE = /^\s*data:(?:text\/html|image\/svg\+xml|application\/xml|text\/xml)/i
 
 function policyUrl(value: string) {
   const trimmed = value.trim().replace(/^['"]|['"]$/g, '')
@@ -55,6 +59,11 @@ function blocksValue(value: string, type: RemoteResourceType, policy: PackageSec
   return url !== null && !policy.canLoadRemote(url, type)
 }
 
+function isDangerousResourceValue(value: string) {
+  const trimmed = value.trim().replace(/^['"]|['"]$/g, '')
+  return DANGEROUS_SCHEME_RE.test(trimmed) || DANGEROUS_DATA_URL_RE.test(trimmed)
+}
+
 function markerName(attribute: string) {
   return `data-markdoc-original-${attribute.replace(/:/g, '-')}`
 }
@@ -66,6 +75,11 @@ function blockAttribute(element: Element, attribute: string, replacement?: strin
   }
   if (replacement === undefined) element.removeAttribute(attribute)
   else element.setAttribute(attribute, replacement)
+}
+
+function removeUnsafeAttribute(element: Element, attribute: string) {
+  element.removeAttribute(attribute)
+  element.removeAttribute(markerName(attribute))
 }
 
 function rewriteAttribute(element: Element, attribute: string, replacement: string) {
@@ -102,11 +116,19 @@ function svgResourceType(element: Element): RemoteResourceType {
 }
 
 function enforceElement(element: Element, policy: PackageSecurityPolicy, resolveLocalResourceUrl?: LocalResourceUrlResolver) {
+  for (const attribute of element.getAttributeNames()) {
+    if (/^on/i.test(attribute)) removeUnsafeAttribute(element, attribute)
+  }
+
   rewriteLocalElement(element, resolveLocalResourceUrl)
   const tagName = element.tagName.toUpperCase()
   for (const resource of RESOURCE_ATTRIBUTES[tagName] ?? []) {
     const value = element.getAttribute(resource.attribute)
     if (!value) continue
+    if (isDangerousResourceValue(value)) {
+      removeUnsafeAttribute(element, resource.attribute)
+      continue
+    }
     if (resource.attribute === 'srcset') {
       const allowed = value.split(',').filter(candidate => !blocksValue(candidate.trim().split(/\s+/)[0], resource.type, policy))
       if (allowed.length === 0) blockAttribute(element, resource.attribute)
@@ -126,6 +148,10 @@ function enforceElement(element: Element, policy: PackageSecurityPolicy, resolve
   if (isSvgResourceElement(element)) {
     for (const attribute of SVG_RESOURCE_ATTRIBUTES) {
       const value = element.getAttribute(attribute)
+      if (value && isDangerousResourceValue(value)) {
+        removeUnsafeAttribute(element, attribute)
+        continue
+      }
       if (value && blocksValue(value, svgResourceType(element), policy)) {
         blockAttribute(element, attribute)
       }
@@ -189,49 +215,6 @@ export function restoreBlockedResources(root: ParentNode) {
   }
 }
 
-interface VditorInternals {
-  currentMode: 'wysiwyg' | 'ir' | 'sv'
-  wysiwyg: { element: HTMLElement }
-  ir: { element: HTMLElement }
-  lute: {
-    VditorDOM2Md(html: string): string
-    VditorIRDOM2Md(html: string): string
-    Md2VditorDOM?(markdown: string): string
-    Md2VditorIRDOM?(markdown: string): string
-    SpinVditorDOM?(html: string): string
-    SpinVditorIRDOM?(html: string): string
-  }
-}
-
-export function installRemoteResourceRenderBoundary(
-  editor: { getValue(): string },
-  currentPolicy: () => PackageSecurityPolicy | null | undefined,
-  currentLocalResourceUrl?: () => LocalResourceUrlResolver | null | undefined,
-) {
-  const internals = (editor as unknown as { vditor?: VditorInternals }).vditor
-  if (!internals) return
-  for (const method of ['Md2VditorDOM', 'Md2VditorIRDOM', 'SpinVditorDOM', 'SpinVditorIRDOM'] as const) {
-    const original = internals.lute[method]
-    if (!original) continue
-    internals.lute[method] = ((value: string) => sanitizeRenderedHtml(
-      original.call(internals.lute, value),
-      currentPolicy(),
-      currentLocalResourceUrl?.() ?? undefined
-    )) as never
-  }
-}
-
-export function getCanonicalEditorMarkdown(editor: { getValue(): string }) {
-  const internals = (editor as unknown as { vditor?: VditorInternals }).vditor
-  if (!internals || internals.currentMode === 'sv') return editor.getValue()
-  const source = internals.currentMode === 'wysiwyg' ? internals.wysiwyg.element : internals.ir.element
-  const clone = source.cloneNode(true) as HTMLElement
-  restoreBlockedResources(clone)
-  return internals.currentMode === 'wysiwyg'
-    ? internals.lute.VditorDOM2Md(clone.innerHTML)
-    : internals.lute.VditorIRDOM2Md(clone.innerHTML)
-}
-
 export function observeRemoteResourcePolicy(
   root: HTMLElement,
   currentPolicy: () => PackageSecurityPolicy | null | undefined,
@@ -256,7 +239,6 @@ export function observeRemoteResourcePolicy(
     subtree: true,
     childList: true,
     attributes: true,
-    attributeFilter: ['src', 'srcset', 'href', 'xlink:href', 'data', 'poster', 'style', 'srcdoc'],
   })
   return () => observer.disconnect()
 }

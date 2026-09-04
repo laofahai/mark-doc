@@ -55,17 +55,6 @@ function SidebarFileIcon({ display }: { display: SidebarFileDisplay }) {
   )
 }
 
-function outlineHeadingSelector() {
-  return [
-    '.editor-vditor-surface .vditor-reset h1',
-    '.editor-vditor-surface .vditor-reset h2',
-    '.editor-vditor-surface .vditor-reset h3',
-    '.editor-vditor-surface .vditor-reset h4',
-    '.editor-vditor-surface .vditor-reset h5',
-    '.editor-vditor-surface .vditor-reset h6',
-  ].join(',')
-}
-
 function hasOutlineChildren(items: SidebarOutlineItem[], index: number) {
   const level = items[index].level
   for (let i = index + 1; i < items.length; i += 1) {
@@ -243,8 +232,8 @@ export function Sidebar({ onSidebarStateChange }: SidebarProps) {
 
   const focusOutlineItem = (item: SidebarOutlineItem) => {
     setActiveOutlineId(item.id)
-    const headings = Array.from(document.querySelectorAll<HTMLElement>(outlineHeadingSelector()))
-    const target = headings[item.index] ?? headings.find(element => element.textContent?.trim() === item.text)
+    if (documentContext.scrollActiveEditorToOutlineItem?.(item.id)) return
+    const target = document.querySelector<HTMLElement>(`[data-markdoc-editor-root] [data-markdoc-outline-id="${CSS.escape(item.id)}"]`)
     target?.scrollIntoView({ block: 'start', behavior: 'smooth' })
   }
 

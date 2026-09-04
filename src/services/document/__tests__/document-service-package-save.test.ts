@@ -183,6 +183,27 @@ describe('DocumentService package saves', () => {
     )
   })
 
+  it('rescans live Markdown asset references before writing a package', async () => {
+    const document = newDocument({
+      markdown: '![typed](assets/typed.png)',
+      assets: { references: [] },
+      dirty: { markdown: true, assets: false, presentation: false },
+    })
+
+    const saved = await new DocumentService().saveDocument(document)
+
+    expect(saved.ok).toBe(true)
+    const writeCall = vi.mocked(invoke).mock.calls.find(([command]) => command === 'write_mdoc_package')
+    const input = (writeCall?.[1] as { input: { workspaceRoot: string } }).input
+    expect(input).toMatchObject({
+      files: ['assets/typed.png', 'document.md'],
+    })
+    expect(copyFile).toHaveBeenCalledWith(
+      '/tmp/markdoc/paste-source/assets/typed.png',
+      `${input.workspaceRoot}/assets/typed.png`,
+    )
+  })
+
   it('fails the package save when a referenced local asset cannot be copied', async () => {
     vi.mocked(copyFile).mockRejectedValueOnce(new Error('missing asset'))
     const service = new DocumentService()
@@ -237,6 +258,7 @@ describe('DocumentService package saves', () => {
         packageManifest: { format: 'markdoc-package', version: 1, entry: 'content/main.md' },
         storage: { type: 'temporary', rootPath: '/tmp/package', recoveryKey: 'package-doc' },
       },
+      markdown: '![chart](assets/chart.png)',
       assets: { references: ['assets/chart.png'] },
       dirty: { markdown: true, assets: false, presentation: false },
     }
@@ -303,6 +325,7 @@ describe('DocumentService package saves', () => {
         packageManifest: { format: 'markdoc-package', version: 1, entry: 'document.md' },
         storage: { type: 'temporary', rootPath: '/tmp/package', recoveryKey: 'package-doc' },
       },
+      markdown: '![original](assets/original.png)',
       assets: { references: ['assets/original.png'] },
       dirty: { markdown: true, assets: false, presentation: false },
     }

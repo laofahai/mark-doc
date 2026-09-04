@@ -3,5 +3,3 @@ declare module 'markdown-it-github' {
   const mdGithub: MarkdownIt.PluginSimple
   export default mdGithub
 }
-
-declare module 'vditor/dist/js/mermaid/mermaid.min.js'

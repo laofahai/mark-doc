@@ -17,8 +17,14 @@ function editorAdapter(markdown: string): DocumentEditorAdapter {
     getMarkdown: () => markdown,
     setMarkdown: vi.fn(),
     focus: vi.fn(),
+    blur: vi.fn(),
+    canRun: vi.fn(() => true),
+    isActive: vi.fn(() => false),
+    run: vi.fn(() => true),
     insertImage: vi.fn(),
     insertAttachment: vi.fn(),
+    scrollToOutlineItem: vi.fn(() => false),
+    dispose: vi.fn(),
   }
 }
 

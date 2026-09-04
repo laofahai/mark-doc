@@ -52,6 +52,7 @@ interface DocumentContextValue {
   setActiveMarkdown: (markdown: string) => void
   importActiveImageAsset: (file: File) => Promise<string | null>
   registerDocumentEditor: (documentId: string, adapter: DocumentEditorAdapter | null) => void
+  scrollActiveEditorToOutlineItem: (id: string) => boolean
   getDocumentForTab: (id: string) => DocumentModel | null
   openFileFromPath: (path: string, name: string) => Promise<void>
   openFileDialog: () => Promise<void>
@@ -238,6 +239,11 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     }
     editorAdaptersRef.current.delete(documentId)
   }, [])
+
+  const scrollActiveEditorToOutlineItem = useCallback((id: string) => {
+    if (!activeDocument) return false
+    return editorAdaptersRef.current.get(activeDocument.id)?.scrollToOutlineItem(id) ?? false
+  }, [activeDocument])
 
   const getDocumentWithLiveMarkdown = useCallback((document: DocumentModel) => {
     const adapter = editorAdaptersRef.current.get(document.id)
@@ -680,6 +686,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     setActiveMarkdown,
     importActiveImageAsset,
     registerDocumentEditor,
+    scrollActiveEditorToOutlineItem,
     getDocumentForTab,
     openFileFromPath,
     openFileDialog,
@@ -719,6 +726,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     setActiveMarkdown,
     importActiveImageAsset,
     registerDocumentEditor,
+    scrollActiveEditorToOutlineItem,
     getDocumentForTab,
     openFileFromPath,
     openFileDialog,

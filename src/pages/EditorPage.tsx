@@ -155,7 +155,7 @@ export function EditorPage({ pageWidth }: Props) {
       }
       const mod = e.metaKey || e.ctrlKey
       if (!mod) return
-      if (e.key === 'a' && !(e.target as HTMLElement).closest('.vditor')) e.preventDefault()
+      if (e.key === 'a' && !(e.target as HTMLElement).closest('[data-markdoc-editor-root]')) e.preventDefault()
       if (e.key === 's') { e.preventDefault(); handleSave() }
       if (e.key === 'w' && activeVisibleTabKey) {
         e.preventDefault()

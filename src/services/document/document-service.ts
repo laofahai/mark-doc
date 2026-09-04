@@ -10,6 +10,7 @@ import type { DocumentModel, DocumentWorkspace } from './model'
 import { resolveSaveTarget } from './save-strategy'
 import { createTemporaryWorkspace } from './workspace-service'
 import { fileDialogLabels } from '../../locales/file-dialog-labels'
+import { findLocalAssetReferences } from '../assets/AssetManager'
 import { copyFile, readTextFile, selectSavePath, writeTextFile } from '../native-file'
 
 class PackageAssetCopyError extends Error {
@@ -189,7 +190,7 @@ export class DocumentService {
     const workspace = createTemporaryWorkspace(rootPath, document.id)
     await writeTextFile(workspace.entryPath, document.markdown)
     const copiedReferences: string[] = []
-    for (const reference of document.assets.references.filter(path => this.isSafePackagePath(path))) {
+    for (const reference of this.currentAssetReferences(document).filter(path => this.isSafePackagePath(path))) {
       if (!document.workspace.rootPath) continue
       const targetPath = `${rootPath}/${reference}`
       try {
@@ -214,9 +215,13 @@ export class DocumentService {
 
   private packageFiles(document: DocumentModel, workspace: DocumentWorkspace, entry: string) {
     const candidates = workspace.packageEntries?.length
-      ? [entry, ...workspace.packageEntries, ...(document.source.type === 'package' ? document.assets.references : [])]
-      : [entry, ...document.assets.references]
+      ? [entry, ...workspace.packageEntries, ...(document.source.type === 'package' ? this.currentAssetReferences(document) : [])]
+      : [entry, ...this.currentAssetReferences(document)]
     return [...new Set(candidates.filter(path => this.isPackageContentPath(path, entry)))].sort()
+  }
+
+  private currentAssetReferences(document: DocumentModel) {
+    return [...new Set([...document.assets.references, ...findLocalAssetReferences(document.markdown)])]
   }
 
   private isPackageContentPath(path: string, entry: string) {

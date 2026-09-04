@@ -16,13 +16,13 @@ describe('emoji picker', () => {
     expect(EMOJI_GROUPS.every(group => group.items.length >= 12)).toBe(true)
   })
 
-  it('renders category tabs without the Vditor hover tail text', () => {
+  it('renders category tabs without hover helper text', () => {
     const panel = createEmojiPickerPanel({ labels, onSelect: vi.fn() })
 
     expect(panel.querySelectorAll('[data-emoji-tab]')).toHaveLength(5)
     expect(panel.querySelectorAll('[data-emoji-button]').length).toBeGreaterThanOrEqual(12)
-    expect(panel.querySelector('.vditor-emojis__tail')).toBeNull()
-    expect(panel.querySelector('.vditor-emojis__tip')).toBeNull()
+    expect(panel.querySelector('.emoji-picker-panel__tabs')).not.toBeNull()
+    expect(panel.querySelector('.emoji-picker-panel__grid')).not.toBeNull()
   })
 
   it('switches category contents and selects emoji directly', () => {
