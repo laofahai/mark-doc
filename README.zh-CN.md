@@ -22,6 +22,7 @@ MarkDoc 的主文件格式是 `.mdoc`。`.mdoc` 是可携带的文档包：Markd
 - 把 Word 文档导入为可编辑 Markdown。
 - 把当前文档导出为 DOCX。
 - 导出 DOCX 时使用内置样式模板，或选择自己的 `reference.docx`。
+- 设置 A4/Letter、横向/纵向页面版式，并从桌面编辑器直接打印当前文档。
 - 支持多标签、文件侧边栏、文档大纲、亮暗主题和中英文界面。
 - 桌面版可在设置里检查应用更新。
 
@@ -64,6 +65,8 @@ MarkDoc 写入的稳定路径：
 4. 按文档包根目录解析图片和其他资源。
 
 包内 `README.md` 只是给人和 AI 工具看的提示。真正的格式依据是 manifest。
+
+页面版式保存在 `manifest.presentation.page`，不会写进 Markdown 正文。旧工具不理解这个字段时，可以忽略它并继续读取 Markdown 入口。
 
 完整格式说明：[docs/spec/markdoc-package-v1.md](docs/spec/markdoc-package-v1.md)
 

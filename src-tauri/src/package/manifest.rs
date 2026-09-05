@@ -87,7 +87,15 @@ mod tests {
           "schema": "https://raw.githubusercontent.com/laofahai/mark-doc/main/schemas/markdoc-package-v1.schema.json",
           "spec": "https://github.com/laofahai/mark-doc/blob/main/docs/spec/markdoc-package-v1.md",
           "createdBy": { "name": "MarkDoc", "agent": "codex" },
-          "presentation": { "docxReference": "presentation/reference.docx", "theme": "board" },
+          "presentation": {
+            "docxReference": "presentation/reference.docx",
+            "theme": "board",
+            "page": {
+              "size": "a4",
+              "orientation": "landscape",
+              "margins": { "top": "18mm", "right": "18mm", "bottom": "18mm", "left": "18mm" }
+            }
+          },
           "x-ai": { "summary": "custom" }
         }"#;
 
@@ -97,5 +105,9 @@ mod tests {
         assert_eq!(serialized["x-ai"]["summary"], "custom");
         assert_eq!(serialized["createdBy"]["agent"], "codex");
         assert_eq!(serialized["presentation"]["theme"], "board");
+        assert_eq!(
+            serialized["presentation"]["page"]["orientation"],
+            "landscape"
+        );
     }
 }

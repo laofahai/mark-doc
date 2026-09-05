@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { err, errorCauseMatches, ok, type Result } from '../document/errors'
 import type { DocumentModel } from '../document/model'
 import { createTemporaryWorkspace, resolveWorkspacePath } from '../document/workspace-service'
+import { pageLayoutFromManifestPresentation } from '../document/page-layout'
 import { findLocalAssetReferences } from '../assets/AssetManager'
 import { readTextFile } from '../native-file'
 
@@ -12,7 +13,7 @@ export interface PackageManifest {
   schema?: string
   spec?: string
   createdBy?: { name: string; [key: string]: unknown }
-  presentation?: { print?: string; docxReference?: string; [key: string]: unknown }
+  presentation?: { print?: string; docxReference?: string; page?: unknown; [key: string]: unknown }
   [key: string]: unknown
 }
 
@@ -91,6 +92,7 @@ export class PackageImporter {
         packageRecovered: extracted.recovered,
       }
       const referenceDocx = this.extractedDocxReference(result, workspace)
+      const pageLayout = pageLayoutFromManifestPresentation(result.manifest.presentation)
       return ok({
         id,
         source: { type: 'package', packagePath: path, extractedWorkspacePath: result.workspace_root },
@@ -98,9 +100,10 @@ export class PackageImporter {
         markdown,
         metadata: {},
         assets: { references: findLocalAssetReferences(markdown) },
-        presentation: referenceDocx
-          ? { docx: { referenceDocx } }
-          : {},
+        presentation: {
+          ...(referenceDocx ? { docx: { referenceDocx } } : {}),
+          ...(pageLayout ? { page: pageLayout } : {}),
+        },
         dirty: { markdown: false, assets: false, presentation: false },
       })
     } catch (cause) {

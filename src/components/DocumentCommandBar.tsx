@@ -8,7 +8,9 @@ import {
   FolderOpen,
   Maximize2,
   Plus,
+  Printer,
   RectangleHorizontal,
+  RectangleVertical,
   Save,
   StretchHorizontal,
   Trash2,
@@ -16,6 +18,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import type { DocumentPageLayout, DocumentPageOrientation, DocumentPageSize } from '../services/document/page-layout'
 
 export type DocumentPageWidth = 'normal' | 'wide' | 'full'
 
@@ -29,13 +32,16 @@ export interface DocumentCommandActions {
   hasActiveDocument: boolean
   pageWidth: DocumentPageWidth
   onPageWidthChange: (w: DocumentPageWidth) => void
+  pageLayout: DocumentPageLayout
+  onPageLayoutChange: (layout: DocumentPageLayout) => void
+  onPrint: () => void
   recentFiles: { path: string; name: string }[]
   openFileFromPath: (path: string, name: string) => void
   removeRecentFile: (path: string) => void
   clearRecentFiles: () => void
 }
 
-type MenuId = 'file' | 'export' | 'width'
+type MenuId = 'file' | 'export' | 'width' | 'page'
 
 const iconButtonClass = [
   'h-7 w-7 border-none bg-transparent text-muted-foreground',
@@ -61,6 +67,19 @@ const pageWidthIcons: Record<DocumentPageWidth, LucideIcon> = {
   full: Maximize2,
 }
 
+const pageLayoutIcons: Record<DocumentPageOrientation, LucideIcon> = {
+  portrait: RectangleVertical,
+  landscape: RectangleHorizontal,
+}
+
+function pageLayoutWithSize(layout: DocumentPageLayout, size: DocumentPageSize): DocumentPageLayout {
+  return { ...layout, size }
+}
+
+function pageLayoutWithOrientation(layout: DocumentPageLayout, orientation: DocumentPageOrientation): DocumentPageLayout {
+  return { ...layout, orientation }
+}
+
 function runCommand(command: () => void, close: () => void) {
   command()
   close()
@@ -73,6 +92,7 @@ export function DocumentCommandBar({ actions }: { actions: DocumentCommandAction
   const closeMenu = () => setOpenMenu(null)
   const toggleMenu = (menu: MenuId) => setOpenMenu(current => current === menu ? null : menu)
   const PageWidthIcon = pageWidthIcons[actions.pageWidth]
+  const PageLayoutIcon = pageLayoutIcons[actions.pageLayout.orientation]
 
   useEffect(() => {
     const closeOnPointerDown = (event: PointerEvent) => {
@@ -231,6 +251,69 @@ export function DocumentCommandBar({ actions }: { actions: DocumentCommandAction
               </div>
             )}
           </div>
+
+          <div className="relative">
+            <button
+              type="button"
+              className={iconButtonClass}
+              aria-label={t('toolbar.pageSetup')}
+              title={t('toolbar.pageSetup')}
+              onClick={() => toggleMenu('page')}
+            >
+              <PageLayoutIcon size={14} />
+            </button>
+            {openMenu === 'page' && (
+              <div role="menu" data-placement="bottom-end" className={menuPanelClass}>
+                {([
+                  ['a4', t('toolbar.pageSizeA4')],
+                  ['letter', t('toolbar.pageSizeLetter')],
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={actions.pageLayout.size === value}
+                    className={menuButtonClass}
+                    onClick={() => runCommand(() => actions.onPageLayoutChange(pageLayoutWithSize(actions.pageLayout, value)), closeMenu)}
+                  >
+                    <span className="inline-flex h-3.5 w-3.5 items-center justify-center">
+                      {actions.pageLayout.size === value && <Check size={13} />}
+                    </span>
+                    {label}
+                  </button>
+                ))}
+                <div className="my-1 h-px bg-border" />
+                {([
+                  ['portrait', t('toolbar.orientationPortrait'), RectangleVertical],
+                  ['landscape', t('toolbar.orientationLandscape'), RectangleHorizontal],
+                ] as const).map(([value, label, Icon]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={actions.pageLayout.orientation === value}
+                    className={menuButtonClass}
+                    onClick={() => runCommand(() => actions.onPageLayoutChange(pageLayoutWithOrientation(actions.pageLayout, value)), closeMenu)}
+                  >
+                    <span className="inline-flex h-3.5 w-3.5 items-center justify-center">
+                      {actions.pageLayout.orientation === value && <Check size={13} />}
+                    </span>
+                    <Icon size={14} /> {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <button
+            type="button"
+            className={iconButtonClass}
+            aria-label={t('toolbar.print')}
+            title={t('toolbar.print')}
+            onClick={actions.onPrint}
+          >
+            <Printer size={14} />
+          </button>
         </>
       )}
     </div>

@@ -34,12 +34,30 @@ into `assets/` and `presentation/`.
   "version": 1,
   "entry": "document.md",
   "schema": "https://raw.githubusercontent.com/laofahai/mark-doc/main/schemas/markdoc-package-v1.schema.json",
-  "spec": "https://github.com/laofahai/mark-doc/blob/main/docs/spec/markdoc-package-v1.md"
+  "spec": "https://github.com/laofahai/mark-doc/blob/main/docs/spec/markdoc-package-v1.md",
+  "presentation": {
+    "page": {
+      "size": "a4",
+      "orientation": "landscape",
+      "margins": {
+        "top": "18mm",
+        "right": "18mm",
+        "bottom": "18mm",
+        "left": "18mm"
+      }
+    }
+  }
 }
 ```
 
 `format`, `version`, `entry`, `schema`, and `spec` are required. Unknown
 manifest fields should be preserved by tools when practical.
+
+`presentation.page` is optional and stores app-level page layout for editing
+and printing. It supports `a4` and `letter` page sizes, `portrait` and
+`landscape` orientation, and four explicit CSS-like margins using `mm`, `cm`,
+`in`, or `pt`. Plain Markdown remains the semantic source; page layout belongs
+in the manifest so Markdown content is not polluted with app-only metadata.
 
 ## Reading Order For Tools And AI
 
@@ -70,6 +88,8 @@ manifest presentation resource such as `presentation.print` or
 `presentation.docxReference` is missing, readers should report an integrity
 warning and still open the Markdown entry when it is present. Writers must not
 create a new package whose manifest points at resources that are not included.
+`presentation.page` does not point at a resource and should be ignored by older
+readers that do not understand it.
 
 Implementations should enforce resource limits before extracting or writing a
 package. A package that exceeds entry-count, single-resource, or total

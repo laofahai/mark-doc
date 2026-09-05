@@ -2,6 +2,12 @@
   position: relative;
   min-height: 100%;
   height: 100%;
+  --markdoc-page-width: 210mm;
+  --markdoc-page-height: 297mm;
+  --markdoc-page-margin-top: 18mm;
+  --markdoc-page-margin-right: 18mm;
+  --markdoc-page-margin-bottom: 18mm;
+  --markdoc-page-margin-left: 18mm;
 }
 
 .markdoc-editor-shell {
@@ -12,17 +18,28 @@
 .markdoc-editor-scroll {
   flex: 1 1 auto;
   min-height: 0;
+  overflow: visible;
 }
 
 .markdoc-tiptap-editor {
   min-height: 100%;
+  min-width: max-content;
+  box-sizing: border-box;
+  padding: 28px 28px 104px;
 }
 
 .markdoc-tiptap-editor .tiptap,
 .markdoc-tiptap-editor .ProseMirror {
-  min-height: calc(100vh - 164px);
-  padding: 56px 48px 120px;
+  box-sizing: border-box;
+  width: var(--markdoc-page-width);
+  min-height: var(--markdoc-page-height);
+  margin: 0 auto;
+  padding: var(--markdoc-page-margin-top) var(--markdoc-page-margin-right) var(--markdoc-page-margin-bottom) var(--markdoc-page-margin-left);
+  border: 1px solid hsl(var(--border) / 0.72);
+  border-radius: 3px;
   outline: none;
+  background: hsl(var(--background));
+  box-shadow: 0 14px 36px hsl(var(--foreground) / 0.08);
   color: hsl(var(--foreground));
   transform: scale(var(--editor-zoom, 1));
   transform-origin: top center;
@@ -284,13 +301,29 @@
 }
 
 @media (max-width: 720px) {
+  .markdoc-tiptap-editor {
+    min-width: 0;
+    padding: 12px 12px 96px;
+  }
+
   .markdoc-tiptap-editor .tiptap,
   .markdoc-tiptap-editor .ProseMirror {
-    padding: 32px 24px 112px;
+    width: 100%;
+    min-height: calc(100vh - 170px);
+    padding: 28px 22px 96px;
+    border-inline: 0;
+    box-shadow: none;
   }
 
   .markdoc-formatting-toolbar {
     max-width: calc(100vw - 20px);
     overflow-x: auto;
+  }
+}
+
+@media print {
+  .markdoc-editor-popover-layer,
+  [data-markdoc-print-hidden] {
+    display: none !important;
   }
 }

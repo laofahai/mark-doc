@@ -12,6 +12,13 @@ const baseActions = {
   hasActiveDocument: true,
   pageWidth: 'normal' as const,
   onPageWidthChange: vi.fn(),
+  pageLayout: {
+    size: 'a4' as const,
+    orientation: 'portrait' as const,
+    margins: { top: '18mm', right: '18mm', bottom: '18mm', left: '18mm' },
+  },
+  onPageLayoutChange: vi.fn(),
+  onPrint: vi.fn(),
   recentFiles: [],
   openFileFromPath: vi.fn(),
   removeRecentFile: vi.fn(),
@@ -25,6 +32,12 @@ vi.mock('react-i18next', () => ({
       'toolbar.file': 'File',
       'toolbar.save': 'Save',
       'toolbar.pageWidth': 'Page Width',
+      'toolbar.pageSetup': 'Page Setup',
+      'toolbar.print': 'Print',
+      'toolbar.pageSizeA4': 'A4',
+      'toolbar.pageSizeLetter': 'Letter',
+      'toolbar.orientationPortrait': 'Portrait',
+      'toolbar.orientationLandscape': 'Landscape',
       'toolbar.export': 'Export',
       'toolbar.exportMd': 'Export MD',
       'toolbar.exportDocx': 'Export DOCX',
@@ -41,6 +54,8 @@ describe('DocumentCommandBar', () => {
     expect(commandBar).toContainElement(screen.getByRole('button', { name: 'File' }))
     expect(commandBar).toContainElement(screen.getByRole('button', { name: 'Save' }))
     expect(commandBar).toContainElement(screen.getByRole('button', { name: 'Page Width' }))
+    expect(commandBar).toContainElement(screen.getByRole('button', { name: 'Page Setup' }))
+    expect(commandBar).toContainElement(screen.getByRole('button', { name: 'Print' }))
   })
 
   it('keeps file commands visible and hides document-only commands without an active document', () => {
@@ -51,6 +66,8 @@ describe('DocumentCommandBar', () => {
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Export' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Page Width' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Page Setup' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Print' })).not.toBeInTheDocument()
   })
 
   it.each([
@@ -74,6 +91,38 @@ describe('DocumentCommandBar', () => {
 
     expect(actions.onSave).toHaveBeenCalledOnce()
     expect(actions.onExportDocx).toHaveBeenCalledOnce()
+  })
+
+  it('changes page size and orientation from the page setup menu', () => {
+    const actions = { ...baseActions, onPageLayoutChange: vi.fn() }
+    render(<DocumentCommandBar actions={actions} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Page Setup' }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Landscape' }))
+
+    expect(actions.onPageLayoutChange).toHaveBeenCalledWith({
+      size: 'a4',
+      orientation: 'landscape',
+      margins: { top: '18mm', right: '18mm', bottom: '18mm', left: '18mm' },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Page Setup' }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Letter' }))
+
+    expect(actions.onPageLayoutChange).toHaveBeenCalledWith({
+      size: 'letter',
+      orientation: 'portrait',
+      margins: { top: '18mm', right: '18mm', bottom: '18mm', left: '18mm' },
+    })
+  })
+
+  it('runs the print command from the header', () => {
+    const actions = { ...baseActions, onPrint: vi.fn() }
+    render(<DocumentCommandBar actions={actions} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Print' }))
+
+    expect(actions.onPrint).toHaveBeenCalledOnce()
   })
 
   it('opens header menus downward', () => {

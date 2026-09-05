@@ -62,6 +62,43 @@ describe('PackageImporter', () => {
     })
   })
 
+  it('hydrates page layout from package manifest presentation', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce({
+      manifest: {
+        format: 'markdoc-package',
+        version: 1,
+        entry: 'document.md',
+        presentation: {
+          page: {
+            size: 'a4',
+            orientation: 'landscape',
+            margins: { top: '14mm', right: '16mm', bottom: '14mm', left: '16mm' },
+          },
+        },
+      },
+      entries: ['document.md'],
+      quarantined: [],
+      workspace_root: '/tmp/markdoc/package-page',
+      entry_path: '/tmp/markdoc/package-page/document.md',
+    })
+    vi.mocked(readTextFile).mockResolvedValueOnce('# Package')
+
+    const result = await new PackageImporter().open('/docs/report.mdoc', '/tmp/markdoc/package-page')
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        presentation: {
+          page: {
+            size: 'a4',
+            orientation: 'landscape',
+            margins: { top: '14mm', right: '16mm', bottom: '14mm', left: '16mm' },
+          },
+        },
+      },
+    })
+  })
+
   it('does not expose a manifest docx reference that was not extracted', async () => {
     vi.mocked(invoke).mockResolvedValueOnce({
       manifest: {

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { ExportDocxDialog, type TemplateChoice } from '../components/ExportDocxDialog'
 import type { DocumentCommandActions, DocumentPageWidth } from '../components/DocumentCommandBar'
 import { useDocument, type DocumentTab } from '../contexts/DocumentContext'
+import { DEFAULT_PAGE_LAYOUT } from '../services/document/page-layout'
 import { documentSourcePath } from '../services/document/external-change-service'
 import { exportMarkdownFile } from '../services/document/markdown-export'
 
@@ -69,6 +70,9 @@ export function useDocumentCommandActions({ pageWidth, onPageWidthChange }: UseD
     hasActiveDocument: Boolean(activeDocument),
     pageWidth,
     onPageWidthChange,
+    pageLayout: documentContext.activePageLayout ?? DEFAULT_PAGE_LAYOUT,
+    onPageLayoutChange: documentContext.updateActivePageLayout,
+    onPrint: documentContext.printActiveDocument,
     recentFiles: documentContext.recentFiles,
     openFileFromPath: (path, name) => { void documentContext.openFileFromPath(path, name) },
     removeRecentFile: documentContext.removeRecentFile,
@@ -79,6 +83,9 @@ export function useDocumentCommandActions({ pageWidth, onPageWidthChange }: UseD
     handleExportMd,
     handleOpenFolder,
     handleSave,
+    documentContext.activePageLayout,
+    documentContext.printActiveDocument,
+    documentContext.updateActivePageLayout,
     onPageWidthChange,
     pageWidth,
   ])

@@ -49,6 +49,12 @@ export default {
     widthNormal: '标准宽度',
     widthWide: '宽屏',
     widthFull: '全宽',
+    pageSetup: '页面设置',
+    print: '打印',
+    pageSizeA4: 'A4',
+    pageSizeLetter: 'Letter',
+    orientationPortrait: '纵向',
+    orientationLandscape: '横向',
   },
   sidebar: {
     outline: '大纲',

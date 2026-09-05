@@ -26,6 +26,8 @@ there for DOCX handoff, not as the product's storage model.
 - Import Word documents into editable Markdown.
 - Export the current document to DOCX.
 - Use a built-in Word style template or your own `reference.docx`.
+- Set A4/Letter page layout, portrait/landscape orientation, and print the
+  current document from the desktop editor.
 - Work with tabs, a file sidebar, a document outline, light/dark themes, and
   Chinese/English UI.
 - Check for app updates from Settings in desktop builds.
@@ -75,6 +77,9 @@ External tools and AI agents can read `.mdoc` without installing MarkDoc:
 
 The package `README.md` is only a hint for humans and AI tools. The manifest is
 the source of truth.
+
+Page layout lives in `manifest.presentation.page`, not in Markdown text. Older
+tools can ignore it and still read the canonical Markdown entry.
 
 Full format spec: [docs/spec/markdoc-package-v1.md](docs/spec/markdoc-package-v1.md)
 

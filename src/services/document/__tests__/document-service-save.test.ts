@@ -85,4 +85,24 @@ describe('document save behavior', () => {
       requiresDialog: true,
     })
   })
+
+  it('plain markdown with page layout changes prompts to save as mdoc on normal save', () => {
+    const decision = resolveSaveTarget({
+      ...doc({ type: 'markdown', path: '/docs/report.md' }),
+      presentation: {
+        page: {
+          size: 'a4',
+          orientation: 'landscape',
+          margins: { top: '18mm', right: '18mm', bottom: '18mm', left: '18mm' },
+        },
+      },
+      dirty: { markdown: false, assets: false, presentation: true },
+    })
+
+    expect(decision).toEqual({
+      defaultKind: 'mdoc',
+      allowedKinds: ['mdoc', 'markdown'],
+      requiresDialog: true,
+    })
+  })
 })

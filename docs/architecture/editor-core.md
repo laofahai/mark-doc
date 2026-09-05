@@ -496,6 +496,8 @@ The editor-core work is complete only when:
 - text color and background color work in WYSIWYG and serialize predictably
 - toolbar popovers render above the editor and remain clickable
 - outline click scrolls to the heading without later jumping to the top
+- A4/Letter and portrait/landscape page layout affect the editor paper surface
+  and desktop print CSS without polluting Markdown
 - Chinese and English UI keys are complete
 - unit, integration, and real Tauri smoke tests pass
 

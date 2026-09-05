@@ -51,6 +51,17 @@ function Harness() {
       <button type="button" onClick={commands.actions.onSave}>save command</button>
       <button type="button" onClick={commands.actions.onExportMd}>export markdown</button>
       <button type="button" onClick={commands.actions.onExportDocx}>export docx</button>
+      <button
+        type="button"
+        onClick={() => commands.actions.onPageLayoutChange({
+          size: 'a4',
+          orientation: 'landscape',
+          margins: { top: '18mm', right: '18mm', bottom: '18mm', left: '18mm' },
+        })}
+      >
+        set landscape
+      </button>
+      <button type="button" onClick={commands.actions.onPrint}>print command</button>
       {commands.exportDialog}
     </>
   )
@@ -117,5 +128,34 @@ describe('useDocumentCommandActions', () => {
       '/exports/report.docx',
       undefined,
     ))
+  })
+
+  it('routes page layout changes through DocumentContext presentation state', async () => {
+    renderHarness()
+    fireEvent.click(screen.getByRole('button', { name: 'create document' }))
+    fireEvent.click(screen.getByRole('button', { name: 'set landscape' }))
+    fireEvent.click(screen.getByRole('button', { name: 'save command' }))
+
+    await waitFor(() => expect(saveDocument).toHaveBeenCalledWith(expect.objectContaining({
+      presentation: {
+        page: {
+          size: 'a4',
+          orientation: 'landscape',
+          margins: { top: '18mm', right: '18mm', bottom: '18mm', left: '18mm' },
+        },
+      },
+      dirty: expect.objectContaining({ presentation: true }),
+    })))
+  })
+
+  it('routes print through the active document command model', () => {
+    const printSpy = vi.fn()
+    Object.defineProperty(window, 'print', { configurable: true, value: printSpy })
+    renderHarness()
+    fireEvent.click(screen.getByRole('button', { name: 'create document' }))
+    fireEvent.click(screen.getByRole('button', { name: 'print command' }))
+
+    expect(printSpy).toHaveBeenCalledOnce()
+    window.dispatchEvent(new Event('afterprint'))
   })
 })

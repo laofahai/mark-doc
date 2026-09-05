@@ -272,7 +272,7 @@ describe('DocumentService package saves', () => {
         outputPath: '/docs/report.mdoc',
         entry: 'content/main.md',
         files: ['assets/chart.png', 'content/main.md'],
-        manifest: document.workspace.packageManifest,
+        manifest: expect.objectContaining(document.workspace.packageManifest),
         sourcePackagePath: '/docs/report.mdoc',
         preservedFiles: [
           'assets/icon.svg',
@@ -280,6 +280,60 @@ describe('DocumentService package saves', () => {
           'presentation/reference.docx',
         ],
       },
+    })
+  })
+
+  it('writes document page layout into package manifest presentation', async () => {
+    const document: DocumentModel = {
+      ...markdownDocument(),
+      source: { type: 'package', packagePath: '/docs/report.mdoc', extractedWorkspacePath: '/tmp/package' },
+      workspace: {
+        id: 'package-workspace',
+        rootPath: '/tmp/package',
+        entryPath: '/tmp/package/content/main.md',
+        packageEntries: ['content/main.md', 'presentation/print.css', 'presentation/reference.docx'],
+        packageManifest: {
+          format: 'markdoc-package',
+          version: 1,
+          entry: 'content/main.md',
+          presentation: {
+            print: 'presentation/print.css',
+            docxReference: 'presentation/reference.docx',
+            theme: 'board',
+          },
+        },
+        storage: { type: 'temporary', rootPath: '/tmp/package', recoveryKey: 'package-doc' },
+      },
+      markdown: '# Report',
+      presentation: {
+        page: {
+          size: 'a4',
+          orientation: 'landscape',
+          margins: { top: '14mm', right: '16mm', bottom: '14mm', left: '16mm' },
+        },
+      },
+      dirty: { markdown: false, assets: false, presentation: true },
+    }
+
+    const saved = await new DocumentService().saveDocument(document)
+
+    expect(saved.ok).toBe(true)
+    expect(invoke).toHaveBeenCalledWith('write_mdoc_package', {
+      input: expect.objectContaining({
+        manifest: expect.objectContaining({
+          entry: 'content/main.md',
+          presentation: expect.objectContaining({
+            print: 'presentation/print.css',
+            docxReference: 'presentation/reference.docx',
+            theme: 'board',
+            page: {
+              size: 'a4',
+              orientation: 'landscape',
+              margins: { top: '14mm', right: '16mm', bottom: '14mm', left: '16mm' },
+            },
+          }),
+        }),
+      }),
     })
   })
 

@@ -15,6 +15,32 @@ describe('MarkDoc editor shell', () => {
     expect(document.querySelector('.markdoc-formatting-toolbar')).toBeInTheDocument()
   })
 
+  it('applies document page layout attributes and CSS variables to the editor surface', async () => {
+    render(
+      <Editor
+        content="# Title"
+        onChange={() => {}}
+        pageLayout={{
+          size: 'a4',
+          orientation: 'landscape',
+          margins: { top: '14mm', right: '16mm', bottom: '14mm', left: '16mm' },
+        }}
+      />,
+    )
+
+    const shell = await screen.findByTestId('markdoc-editor-shell')
+    expect(shell).toHaveAttribute('data-markdoc-page-size', 'a4')
+    expect(shell).toHaveAttribute('data-markdoc-page-orientation', 'landscape')
+    expect(shell).toHaveStyle({
+      '--markdoc-page-width': '297mm',
+      '--markdoc-page-height': '210mm',
+      '--markdoc-page-margin-top': '14mm',
+      '--markdoc-page-margin-right': '16mm',
+      '--markdoc-page-margin-bottom': '14mm',
+      '--markdoc-page-margin-left': '16mm',
+    })
+  })
+
   it('imports pasted screenshots into assets before inserting Markdown', async () => {
     const onImagePaste = vi.fn(async () => 'assets/pasted.png')
     const onChange = vi.fn()

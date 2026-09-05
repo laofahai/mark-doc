@@ -314,7 +314,19 @@ interface PresentationConfig {
   profile?: string
   screen?: PresentationResource
   print?: PresentationResource
+  page?: DocumentPageLayout
   docx?: DocxPresentation
+}
+
+interface DocumentPageLayout {
+  size: 'a4' | 'letter'
+  orientation: 'portrait' | 'landscape'
+  margins: {
+    top: string
+    right: string
+    bottom: string
+    left: string
+  }
 }
 
 interface DocxPresentation {
@@ -323,6 +335,9 @@ interface DocxPresentation {
 ```
 
 Deleting `presentation/` must not make the document semantically unreadable.
+`page` is manifest metadata, not a resource file, so deleting `presentation/`
+does not remove it from a valid `.mdoc` package. Plain Markdown files should not
+gain page metadata unless the user explicitly saves them as `.mdoc`.
 
 The built-in Chinese formal `reference.docx` should become a built-in
 presentation profile, not special-case application logic.

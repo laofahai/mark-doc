@@ -49,6 +49,12 @@ export default {
     widthNormal: 'Normal',
     widthWide: 'Wide',
     widthFull: 'Full Width',
+    pageSetup: 'Page Setup',
+    print: 'Print',
+    pageSizeA4: 'A4',
+    pageSizeLetter: 'Letter',
+    orientationPortrait: 'Portrait',
+    orientationLandscape: 'Landscape',
   },
   sidebar: {
     outline: 'Outline',

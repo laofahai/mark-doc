@@ -1,3 +1,5 @@
+import type { DocumentPageLayout } from './page-layout'
+
 export type DocumentSource =
   | { type: 'markdown'; path: string }
   | { type: 'directory'; rootPath: string; entryPath: string }
@@ -29,6 +31,7 @@ export interface PresentationConfig {
   profile?: string
   screen?: string
   print?: string
+  page?: DocumentPageLayout
   docx?: {
     referenceDocx?: string
   }

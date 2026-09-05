@@ -45,6 +45,42 @@
         },
         "docxReference": {
           "type": "string"
+        },
+        "page": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["size", "orientation", "margins"],
+          "properties": {
+            "size": {
+              "enum": ["a4", "letter"]
+            },
+            "orientation": {
+              "enum": ["portrait", "landscape"]
+            },
+            "margins": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": ["top", "right", "bottom", "left"],
+              "properties": {
+                "top": {
+                  "type": "string",
+                  "pattern": "^(?:0(?:\\.\\d+)?|[1-9]\\d?(?:\\.\\d+)?)(?:mm|cm|in|pt)$"
+                },
+                "right": {
+                  "type": "string",
+                  "pattern": "^(?:0(?:\\.\\d+)?|[1-9]\\d?(?:\\.\\d+)?)(?:mm|cm|in|pt)$"
+                },
+                "bottom": {
+                  "type": "string",
+                  "pattern": "^(?:0(?:\\.\\d+)?|[1-9]\\d?(?:\\.\\d+)?)(?:mm|cm|in|pt)$"
+                },
+                "left": {
+                  "type": "string",
+                  "pattern": "^(?:0(?:\\.\\d+)?|[1-9]\\d?(?:\\.\\d+)?)(?:mm|cm|in|pt)$"
+                }
+              }
+            }
+          }
         }
       }
     }

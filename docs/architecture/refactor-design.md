@@ -534,8 +534,8 @@ Required behavior:
 
 ### PresentationService
 
-Owns built-in profiles, custom reference docs, screen/print CSS, and document
-presentation overrides.
+Owns built-in profiles, custom reference docs, page layout, screen/print CSS,
+and document presentation overrides.
 
 Priority:
 
@@ -547,6 +547,12 @@ document presentation
 
 Presentation profile IDs must be stable and language-neutral. Labels and
 descriptions are translated by i18n catalogs.
+
+Page layout (`size`, `orientation`, and margins) is document presentation
+metadata. It belongs in `.mdoc` manifest presentation state, not in Markdown
+frontmatter. Screen editing uses it to size the paper surface; desktop printing
+uses it to generate `@page` CSS. DOCX page layout should still be controlled by
+`reference.docx` unless the export pipeline grows an explicit, tested mapping.
 
 ### PackageSecurityPolicy
 

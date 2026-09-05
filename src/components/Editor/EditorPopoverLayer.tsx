@@ -6,7 +6,7 @@ interface EditorPopoverLayerProps {
 
 export function EditorPopoverLayer({ children }: EditorPopoverLayerProps) {
   return (
-    <div className="markdoc-editor-popover-layer">
+    <div className="markdoc-editor-popover-layer" data-markdoc-print-hidden>
       {children}
     </div>
   )

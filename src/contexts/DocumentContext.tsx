@@ -5,6 +5,7 @@ import { watch } from '@tauri-apps/plugin-fs'
 import type { DocumentModel, DocumentWorkspace } from '../services/document/model'
 import { resolveSaveTarget, type SaveTargetDecision } from '../services/document/save-strategy'
 import { DocumentService } from '../services/document/document-service'
+import { getDocumentPageLayout, normalizePageLayout, pageLayoutEquals, printDocument, type DocumentPageLayout } from '../services/document/page-layout'
 import type { DocumentError } from '../services/document/errors'
 import type { OpenDocumentResult } from '../services/document/document-service'
 import { RecoveryService, type RecoveryState } from '../services/document/recovery-service'
@@ -39,6 +40,7 @@ interface DocumentContextValue {
   activeTabId: string | null
   activeDocument: DocumentModel | null
   activeSaveDecision: SaveTargetDecision | null
+  activePageLayout: DocumentPageLayout | null
   resourceSuggestion: OpenDocumentResult['resourceSuggestion'] | null
   documentError: DocumentError | null
   recoveryState: RecoveryState | null
@@ -50,6 +52,8 @@ interface DocumentContextValue {
   closeDocumentTab: (id: string) => void
   clearActiveDocument: () => void
   setActiveMarkdown: (markdown: string) => void
+  updateActivePageLayout: (layout: DocumentPageLayout) => void
+  printActiveDocument: () => void
   importActiveImageAsset: (file: File) => Promise<string | null>
   registerDocumentEditor: (documentId: string, adapter: DocumentEditorAdapter | null) => void
   scrollActiveEditorToOutlineItem: (id: string) => boolean
@@ -170,6 +174,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   const activeExternalChange = activeDocument ? externalChanges[activeDocument.id] ?? null : null
   const activeSecurityPolicy = activeDocument ? securityPolicies[activeDocument.id] ?? DEFAULT_SECURITY_POLICY : null
   const activeSaveDecision = activeDocument ? resolveSaveTarget(activeDocument) : null
+  const activePageLayout = activeDocument ? getDocumentPageLayout(activeDocument) : null
   const resourceSuggestion = activeDocument ? resourceSuggestions[activeDocument.id] ?? null : null
   const documentTabs = useMemo<DocumentTab[]>(() => tabs.map(tab => {
     const document = documents.find(document => document.id === tab.documentId)
@@ -294,6 +299,25 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       ? { ...document, markdown, dirty: { ...document.dirty, markdown: true } }
       : document
     ))
+  }, [activeDocument])
+
+  const updateActivePageLayout = useCallback((layout: DocumentPageLayout) => {
+    if (!activeDocument) return
+    const page = normalizePageLayout(layout)
+    setDocuments(previous => previous.map(document => {
+      if (document.id !== activeDocument.id) return document
+      if (pageLayoutEquals(getDocumentPageLayout(document), page)) return document
+      return {
+        ...document,
+        presentation: { ...document.presentation, page },
+        dirty: { ...document.dirty, presentation: true },
+      }
+    }))
+  }, [activeDocument])
+
+  const printActiveDocument = useCallback(() => {
+    if (!activeDocument) return
+    printDocument(getDocumentPageLayout(activeDocument))
   }, [activeDocument])
 
   const importActiveImageAsset = useCallback(async (file: File) => {
@@ -673,6 +697,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     activeTabId,
     activeDocument,
     activeSaveDecision,
+    activePageLayout,
     resourceSuggestion,
     documentError,
     recoveryState,
@@ -684,6 +709,8 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     closeDocumentTab,
     clearActiveDocument,
     setActiveMarkdown,
+    updateActivePageLayout,
+    printActiveDocument,
     importActiveImageAsset,
     registerDocumentEditor,
     scrollActiveEditorToOutlineItem,
@@ -713,6 +740,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     activeTabId,
     activeDocument,
     activeSaveDecision,
+    activePageLayout,
     resourceSuggestion,
     documentError,
     recoveryState,
@@ -724,6 +752,8 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     closeDocumentTab,
     clearActiveDocument,
     setActiveMarkdown,
+    updateActivePageLayout,
+    printActiveDocument,
     importActiveImageAsset,
     registerDocumentEditor,
     scrollActiveEditorToOutlineItem,

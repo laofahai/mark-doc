@@ -245,6 +245,45 @@ describe('DocumentContext', () => {
     expect(result.current.activeSecurityPolicy).not.toBe(defaultPolicy)
   })
 
+  it('updates active page layout as presentation state and makes markdown save resolve to mdoc', () => {
+    const wrapper = ({ children }: { children: React.ReactNode }) => <DocumentProvider>{children}</DocumentProvider>
+    const { result } = renderHook(() => useDocument(), { wrapper })
+
+    act(() => result.current.createNewDocument())
+    act(() => result.current.updateActivePageLayout({
+      size: 'a4',
+      orientation: 'landscape',
+      margins: { top: '18mm', right: '18mm', bottom: '18mm', left: '18mm' },
+    }))
+
+    expect(result.current.activeDocument?.presentation.page).toEqual({
+      size: 'a4',
+      orientation: 'landscape',
+      margins: { top: '18mm', right: '18mm', bottom: '18mm', left: '18mm' },
+    })
+    expect(result.current.activeDocument?.dirty.presentation).toBe(true)
+    expect(result.current.activeSaveDecision?.defaultKind).toBe('mdoc')
+  })
+
+  it('prints the active document with the current page layout', () => {
+    const printSpy = vi.fn()
+    Object.defineProperty(window, 'print', { configurable: true, value: printSpy })
+    const wrapper = ({ children }: { children: React.ReactNode }) => <DocumentProvider>{children}</DocumentProvider>
+    const { result } = renderHook(() => useDocument(), { wrapper })
+
+    act(() => result.current.createNewDocument())
+    act(() => result.current.updateActivePageLayout({
+      size: 'a4',
+      orientation: 'landscape',
+      margins: { top: '18mm', right: '18mm', bottom: '18mm', left: '18mm' },
+    }))
+    act(() => result.current.printActiveDocument())
+
+    expect(printSpy).toHaveBeenCalledOnce()
+    expect(document.getElementById('markdoc-print-page-style')?.textContent).toContain('size: A4 landscape')
+    window.dispatchEvent(new Event('afterprint'))
+  })
+
   it('stores pasted screenshots as package assets and marks Ctrl+S for mdoc save', async () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => <DocumentProvider>{children}</DocumentProvider>
     const { result } = renderHook(() => useDocument(), { wrapper })

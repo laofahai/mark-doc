@@ -9,6 +9,7 @@ import { PackageExporter } from '../exporters/PackageExporter'
 import type { DocumentModel, DocumentWorkspace } from './model'
 import { resolveSaveTarget } from './save-strategy'
 import { createTemporaryWorkspace } from './workspace-service'
+import { mergePageLayoutIntoManifest } from './page-layout'
 import { fileDialogLabels } from '../../locales/file-dialog-labels'
 import { findLocalAssetReferences } from '../assets/AssetManager'
 import { copyFile, readTextFile, selectSavePath, writeTextFile } from '../native-file'
@@ -104,6 +105,8 @@ export class DocumentService {
       const workspace = await this.ensurePackageWorkspace(document)
       const entry = this.packageEntryPath(document, workspace)
       const files = this.packageFiles(document, workspace, entry)
+      const manifest = this.packageManifestForExport(document, entry)
+      const exportedWorkspace = manifest ? { ...workspace, packageManifest: manifest } : workspace
       const preservedFiles = document.source.type === 'package'
         ? [...new Set((document.workspace.packageQuarantined ?? []).filter(path => this.isPackageContentPath(path, entry)))].sort()
         : []
@@ -111,12 +114,12 @@ export class DocumentService {
         outputPath: packagePath,
         entry,
         files,
-        manifest: document.workspace.packageManifest,
+        manifest,
         sourcePackagePath: document.source.type === 'package' ? document.source.packagePath : undefined,
         preservedFiles,
       })
       if (!exported.ok) return exported
-      return ok({ ...document, source: { type: 'package', packagePath, extractedWorkspacePath: workspace.rootPath! }, workspace, dirty: { markdown: false, assets: false, presentation: false } })
+      return ok({ ...document, source: { type: 'package', packagePath, extractedWorkspacePath: workspace.rootPath! }, workspace: exportedWorkspace, dirty: { markdown: false, assets: false, presentation: false } })
     } catch (cause) {
       const assetCopyError = toAssetCopySaveError(cause)
       if (assetCopyError) return assetCopyError
@@ -137,14 +140,16 @@ export class DocumentService {
       const workspace = await this.ensurePackageWorkspace(document)
       const entry = this.packageEntryPath(document, workspace)
       const files = this.packageFiles(document, workspace, entry)
+      const manifest = this.packageManifestForExport(document, entry)
+      const exportedWorkspace = manifest ? { ...workspace, packageManifest: manifest } : workspace
       const exported = await this.packageExporter.export(workspace, {
         outputPath: packagePath,
         entry,
         files,
-        manifest: document.workspace.packageManifest,
+        manifest,
       })
       if (!exported.ok) return exported
-      return ok({ ...document, source: { type: 'package', packagePath, extractedWorkspacePath: workspace.rootPath! }, workspace, dirty: { markdown: false, assets: false, presentation: false } })
+      return ok({ ...document, source: { type: 'package', packagePath, extractedWorkspacePath: workspace.rootPath! }, workspace: exportedWorkspace, dirty: { markdown: false, assets: false, presentation: false } })
     } catch (cause) {
       const assetCopyError = toAssetCopySaveError(cause)
       if (assetCopyError) return assetCopyError
@@ -222,6 +227,12 @@ export class DocumentService {
 
   private currentAssetReferences(document: DocumentModel) {
     return [...new Set([...document.assets.references, ...findLocalAssetReferences(document.markdown)])]
+  }
+
+  private packageManifestForExport(document: DocumentModel, entry: string) {
+    return document.workspace.packageManifest || document.presentation.page
+      ? mergePageLayoutIntoManifest(document.workspace.packageManifest, entry, document.presentation.page)
+      : undefined
   }
 
   private isPackageContentPath(path: string, entry: string) {
