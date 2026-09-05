@@ -130,12 +130,13 @@ describe('PackageImporter', () => {
         version: 1,
         entry: 'document.md',
         presentation: {
+          screen: 'presentation/screen.css',
           print: 'presentation/print.css',
           docxReference: 'presentation/reference.docx',
         },
       },
       entries: ['document.md'],
-      missing_resources: ['presentation/print.css', 'presentation/reference.docx'],
+      missing_resources: ['presentation/screen.css', 'presentation/print.css', 'presentation/reference.docx'],
       quarantined: [],
       workspace_root: '/tmp/markdoc/package-4',
       entry_path: '/tmp/markdoc/package-4/document.md',
@@ -148,7 +149,7 @@ describe('PackageImporter', () => {
       ok: true,
       value: {
         workspace: {
-          packageMissingManifestResources: ['presentation/print.css', 'presentation/reference.docx'],
+          packageMissingManifestResources: ['presentation/screen.css', 'presentation/print.css', 'presentation/reference.docx'],
           packageQuarantined: [],
         },
         presentation: {},

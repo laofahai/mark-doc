@@ -185,11 +185,18 @@ fn validate_manifest_resource_entries(
         return Ok(());
     };
 
-    for package_path in [&presentation.print, &presentation.docx_reference]
-        .into_iter()
-        .flatten()
+    for package_path in [
+        &presentation.screen,
+        &presentation.print,
+        &presentation.docx_reference,
+    ]
+    .into_iter()
+    .flatten()
     {
         if !is_safe_package_path(package_path) {
+            return Err("package.unsafePath".to_string());
+        }
+        if !is_valid_manifest_resource_extension(package_path, presentation) {
             return Err("package.unsafePath".to_string());
         }
         if !packaged_files.contains(package_path) && !preserved_files.contains(package_path) {
@@ -198,6 +205,22 @@ fn validate_manifest_resource_entries(
     }
 
     Ok(())
+}
+
+fn is_valid_manifest_resource_extension(
+    package_path: &str,
+    presentation: &crate::package::manifest::ManifestPresentation,
+) -> bool {
+    let lower = package_path.to_ascii_lowercase();
+    if presentation.screen.as_deref() == Some(package_path)
+        || presentation.print.as_deref() == Some(package_path)
+    {
+        return lower.ends_with(".css");
+    }
+    if presentation.docx_reference.as_deref() == Some(package_path) {
+        return lower.ends_with(".docx");
+    }
+    true
 }
 
 fn replace_package(
@@ -485,6 +508,7 @@ mod tests {
         let output = dir.path().join("report.mdoc");
         let mut manifest = MarkDocManifest::new("content/main.md");
         manifest.presentation = Some(crate::package::manifest::ManifestPresentation {
+            screen: None,
             print: None,
             docx_reference: Some("presentation/reference.docx".to_string()),
             extensions: serde_json::Map::new(),
@@ -623,6 +647,7 @@ mod tests {
         let output = dir.path().join("report.mdoc");
         let mut manifest = MarkDocManifest::new("document.md");
         manifest.presentation = Some(crate::package::manifest::ManifestPresentation {
+            screen: None,
             print: Some("presentation/print.css".to_string()),
             docx_reference: Some("presentation/reference.docx".to_string()),
             extensions: serde_json::Map::new(),
@@ -643,6 +668,95 @@ mod tests {
         );
         assert!(!output.exists());
         assert!(!output.with_extension("mdoc.tmp").exists());
+    }
+
+    #[test]
+    fn rejects_manifest_screen_css_missing_from_output_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("workspace");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("document.md"), "# Hello").unwrap();
+        let output = dir.path().join("report.mdoc");
+        let mut manifest = MarkDocManifest::new("document.md");
+        manifest.presentation = Some(crate::package::manifest::ManifestPresentation {
+            screen: Some("presentation/screen.css".to_string()),
+            print: None,
+            docx_reference: None,
+            extensions: serde_json::Map::new(),
+        });
+
+        assert_eq!(
+            write_mdoc_package(PackageWriteInput {
+                workspace_root: root.to_string_lossy().to_string(),
+                output_path: output.to_string_lossy().to_string(),
+                entry: "document.md".to_string(),
+                files: vec!["document.md".to_string()],
+                manifest: Some(manifest),
+                source_package_path: None,
+                preserved_files: Vec::new(),
+            })
+            .unwrap_err(),
+            "package.missingEntry"
+        );
+    }
+
+    #[test]
+    fn rejects_manifest_presentation_resources_with_wrong_extensions() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("workspace");
+        fs::create_dir_all(root.join("presentation")).unwrap();
+        fs::write(root.join("document.md"), "# Hello").unwrap();
+        fs::write(root.join("presentation/screen.txt"), "screen").unwrap();
+        fs::write(root.join("presentation/print.png"), "print").unwrap();
+        fs::write(root.join("presentation/reference.txt"), "reference").unwrap();
+        let output = dir.path().join("report.mdoc");
+
+        for (manifest, file) in [
+            (
+                crate::package::manifest::ManifestPresentation {
+                    screen: Some("presentation/screen.txt".to_string()),
+                    print: None,
+                    docx_reference: None,
+                    extensions: serde_json::Map::new(),
+                },
+                "presentation/screen.txt",
+            ),
+            (
+                crate::package::manifest::ManifestPresentation {
+                    screen: None,
+                    print: Some("presentation/print.png".to_string()),
+                    docx_reference: None,
+                    extensions: serde_json::Map::new(),
+                },
+                "presentation/print.png",
+            ),
+            (
+                crate::package::manifest::ManifestPresentation {
+                    screen: None,
+                    print: None,
+                    docx_reference: Some("presentation/reference.txt".to_string()),
+                    extensions: serde_json::Map::new(),
+                },
+                "presentation/reference.txt",
+            ),
+        ] {
+            let mut full_manifest = MarkDocManifest::new("document.md");
+            full_manifest.presentation = Some(manifest);
+
+            assert_eq!(
+                write_mdoc_package(PackageWriteInput {
+                    workspace_root: root.to_string_lossy().to_string(),
+                    output_path: output.to_string_lossy().to_string(),
+                    entry: "document.md".to_string(),
+                    files: vec!["document.md".to_string(), file.to_string()],
+                    manifest: Some(full_manifest),
+                    source_package_path: None,
+                    preserved_files: Vec::new(),
+                })
+                .unwrap_err(),
+                "package.unsafePath"
+            );
+        }
     }
 
     #[test]

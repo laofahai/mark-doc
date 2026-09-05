@@ -1,18 +1,19 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ExportDocxDialog, type TemplateChoice } from '../components/ExportDocxDialog'
-import type { DocumentCommandActions, DocumentPageWidth } from '../components/DocumentCommandBar'
+import type { DocumentCommandActions } from '../components/DocumentCommandBar'
+import type { EditorViewMode } from '../components/sidebar-width'
 import { useDocument, type DocumentTab } from '../contexts/DocumentContext'
 import { DEFAULT_PAGE_LAYOUT } from '../services/document/page-layout'
 import { documentSourcePath } from '../services/document/external-change-service'
 import { exportMarkdownFile } from '../services/document/markdown-export'
 
 interface UseDocumentCommandActionsOptions {
-  pageWidth: DocumentPageWidth
-  onPageWidthChange: (width: DocumentPageWidth) => void
+  viewMode: EditorViewMode
+  onViewModeChange: (mode: EditorViewMode) => void
 }
 
-export function useDocumentCommandActions({ pageWidth, onPageWidthChange }: UseDocumentCommandActionsOptions) {
+export function useDocumentCommandActions({ viewMode, onViewModeChange }: UseDocumentCommandActionsOptions) {
   const { t } = useTranslation()
   const documentContext = useDocument()
   const [exportDocxOpen, setExportDocxOpen] = useState(false)
@@ -68,8 +69,8 @@ export function useDocumentCommandActions({ pageWidth, onPageWidthChange }: UseD
     onOpen: () => { void documentContext.openFileDialog() },
     onOpenFolder: handleOpenFolder,
     hasActiveDocument: Boolean(activeDocument),
-    pageWidth,
-    onPageWidthChange,
+    viewMode,
+    onViewModeChange,
     pageLayout: documentContext.activePageLayout ?? DEFAULT_PAGE_LAYOUT,
     onPageLayoutChange: documentContext.updateActivePageLayout,
     onPrint: documentContext.printActiveDocument,
@@ -86,8 +87,8 @@ export function useDocumentCommandActions({ pageWidth, onPageWidthChange }: UseD
     documentContext.activePageLayout,
     documentContext.printActiveDocument,
     documentContext.updateActivePageLayout,
-    onPageWidthChange,
-    pageWidth,
+    onViewModeChange,
+    viewMode,
   ])
 
   const exportDialog = (

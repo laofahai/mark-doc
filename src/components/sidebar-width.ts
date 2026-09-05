@@ -2,7 +2,7 @@ export const DEFAULT_SIDEBAR_WIDTH = 220
 export const MIN_SIDEBAR_WIDTH = 180
 export const MAX_SIDEBAR_WIDTH = 420
 export const COMPACT_SHELL_WIDTH = 960
-export type PageWidth = 'normal' | 'wide' | 'full'
+export type EditorViewMode = 'fit' | 'actual' | 'wide'
 
 export function clampSidebarWidth(width: number) {
   if (!Number.isFinite(width)) return DEFAULT_SIDEBAR_WIDTH
@@ -22,6 +22,6 @@ export function effectiveSidebarWidth(input: { hasSidebarContent: boolean; reque
   return clampSidebarWidth(input.requestedWidth)
 }
 
-export function effectiveEditorPageWidth(pageWidth: PageWidth, viewportWidth: number): PageWidth {
-  return isCompactShellWidth(viewportWidth) ? 'full' : pageWidth
+export function effectiveEditorViewMode(viewMode: EditorViewMode, viewportWidth: number): EditorViewMode {
+  return isCompactShellWidth(viewportWidth) ? 'fit' : viewMode
 }

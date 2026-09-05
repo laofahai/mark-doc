@@ -239,6 +239,60 @@ describe('DocumentService package saves', () => {
     expect(copyFile).toHaveBeenCalledWith('/docs/assets/diagram.png', `${input.workspaceRoot}/assets/diagram.png`)
   })
 
+  it('preserves safe quarantined resources when explicitly saving an existing package as a new mdoc', async () => {
+    const document: DocumentModel = {
+      ...markdownDocument(),
+      source: { type: 'package', packagePath: '/docs/report.mdoc', extractedWorkspacePath: '/tmp/package' },
+      workspace: {
+        id: 'package-workspace',
+        rootPath: '/tmp/package',
+        entryPath: '/tmp/package/content/main.md',
+        packageEntries: ['content/main.md', 'assets/chart.png'],
+        packageQuarantined: [
+          'presentation/screen.css',
+          'presentation/print.css',
+          'presentation/reference.docx',
+          'assets/icon.svg',
+          '../unsafe.txt',
+          'https://example.com/remote.css',
+        ],
+        packageManifest: {
+          format: 'markdoc-package',
+          version: 1,
+          entry: 'content/main.md',
+          presentation: {
+            screen: 'presentation/screen.css',
+            print: 'presentation/print.css',
+            docxReference: 'presentation/reference.docx',
+          },
+        },
+        storage: { type: 'temporary', rootPath: '/tmp/package', recoveryKey: 'package-doc' },
+      },
+      markdown: '![chart](assets/chart.png)',
+      assets: { references: ['assets/chart.png'] },
+      dirty: { markdown: false, assets: false, presentation: false },
+    }
+
+    const saved = await new DocumentService().saveDocumentAsPackage(document)
+
+    expect(saved.ok).toBe(true)
+    expect(invoke).toHaveBeenCalledWith('write_mdoc_package', {
+      input: expect.objectContaining({
+        workspaceRoot: '/tmp/package',
+        outputPath: '/exports/report.mdoc',
+        entry: 'content/main.md',
+        files: ['assets/chart.png', 'content/main.md'],
+        sourcePackagePath: '/docs/report.mdoc',
+        preservedFiles: [
+          'assets/icon.svg',
+          'presentation/print.css',
+          'presentation/reference.docx',
+          'presentation/screen.css',
+        ],
+      }),
+    })
+  })
+
   it('preserves only safe quarantined package resources from the original archive', async () => {
     const document: DocumentModel = {
       ...markdownDocument(),

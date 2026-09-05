@@ -214,7 +214,7 @@ export function EditorToolbar({ adapter, revision: _revision, onImagePaste }: Ed
         </button>
 
         {popover === 'color' && (
-          <div className="markdoc-toolbar-popover" role="dialog" aria-label={t(colorKind === 'text' ? 'editor.textColor' : 'editor.backgroundColor')}>
+          <div className="markdoc-toolbar-popover" role="dialog" aria-label={t(colorKind === 'text' ? 'editor.textColor' : 'editor.backgroundColor')} data-placement="bottom">
             <div className="markdoc-color-mode-row">
               <button type="button" className="markdoc-color-mode" aria-pressed={colorKind === 'text'} onClick={() => setColorKind('text')}>
                 {t('editor.textColor')}
@@ -250,7 +250,7 @@ export function EditorToolbar({ adapter, revision: _revision, onImagePaste }: Ed
         )}
 
         {popover === 'emoji' && (
-          <div className="markdoc-toolbar-popover markdoc-emoji-popover" role="dialog" aria-label={t('editor.emoji')}>
+          <div className="markdoc-toolbar-popover markdoc-emoji-popover" role="dialog" aria-label={t('editor.emoji')} data-placement="bottom">
             <div className="markdoc-emoji-tabs" role="tablist">
               {EMOJI_GROUPS.map(group => (
                 <button

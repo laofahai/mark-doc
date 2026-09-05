@@ -12,6 +12,7 @@ import type { DocumentSaveStatus } from '../contexts/DocumentContext'
 import type { DocumentEditorAdapter } from '../components/Editor/editor-adapter'
 import { X, FileText, Globe } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import type { EditorViewMode } from '../components/sidebar-width'
 
 /** 从 markdown 源码中提取纯文本，用于字数统计 */
 function getPlainTextLength(md: string): number {
@@ -32,14 +33,11 @@ function getPlainTextLength(md: string): number {
     .length
 }
 
-type PageWidth = 'normal' | 'wide' | 'full'
-const PAGE_WIDTH_CLASS = { normal: 'max-w-[920px]', wide: 'max-w-[1280px]', full: 'max-w-none' }
-
 interface Props {
-  pageWidth: PageWidth
+  viewMode: EditorViewMode
 }
 
-export function EditorPage({ pageWidth }: Props) {
+export function EditorPage({ viewMode }: Props) {
   const { t } = useTranslation()
   const documentContext = useDocument()
   const [zoom, setZoom] = useState(100)
@@ -233,16 +231,17 @@ export function EditorPage({ pageWidth }: Props) {
       )}
 
       {/* 编辑区 */}
-      <div ref={editorAreaRef} className="flex-1 overflow-auto relative">
+      <div ref={editorAreaRef} className="markdoc-editor-viewport flex-1 overflow-hidden relative" data-markdoc-view-mode={viewMode}>
         {documentContext.activeDocument ? (
           <>
-            <div className={`h-full w-full mx-auto ${PAGE_WIDTH_CLASS[pageWidth]}`}>
+            <div className="h-full w-full">
               <Editor
                 key={documentContext.activeDocument?.id ?? documentContext.activeTabId ?? 'e'}
                 content={content}
                 onChange={handleContentChange}
                 onAdapterReady={handleEditorReady}
                 zoom={zoom}
+                viewMode={viewMode}
                 pageLayout={documentContext.activePageLayout ?? undefined}
                 securityPolicy={activeDocument ? documentContext.activeSecurityPolicy : undefined}
                 onImagePaste={activeDocument ? documentContext.importActiveImageAsset : undefined}

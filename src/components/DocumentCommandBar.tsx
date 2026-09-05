@@ -6,7 +6,7 @@ import {
   FileDown,
   FilePlus,
   FolderOpen,
-  Maximize2,
+  Minimize2,
   Plus,
   Printer,
   RectangleHorizontal,
@@ -19,8 +19,9 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { DocumentPageLayout, DocumentPageOrientation, DocumentPageSize } from '../services/document/page-layout'
+import type { EditorViewMode } from './sidebar-width'
 
-export type DocumentPageWidth = 'normal' | 'wide' | 'full'
+export type DocumentEditorViewMode = EditorViewMode
 
 export interface DocumentCommandActions {
   onNew: () => void
@@ -30,8 +31,8 @@ export interface DocumentCommandActions {
   onOpen: () => void
   onOpenFolder: () => void
   hasActiveDocument: boolean
-  pageWidth: DocumentPageWidth
-  onPageWidthChange: (w: DocumentPageWidth) => void
+  viewMode: DocumentEditorViewMode
+  onViewModeChange: (mode: DocumentEditorViewMode) => void
   pageLayout: DocumentPageLayout
   onPageLayoutChange: (layout: DocumentPageLayout) => void
   onPrint: () => void
@@ -41,7 +42,7 @@ export interface DocumentCommandActions {
   clearRecentFiles: () => void
 }
 
-type MenuId = 'file' | 'export' | 'width' | 'page'
+type MenuId = 'file' | 'export' | 'view' | 'page'
 
 const iconButtonClass = [
   'h-7 w-7 border-none bg-transparent text-muted-foreground',
@@ -61,10 +62,10 @@ const menuButtonClass = [
   'hover:bg-accent hover:text-accent-foreground',
 ].join(' ')
 
-const pageWidthIcons: Record<DocumentPageWidth, LucideIcon> = {
-  normal: RectangleHorizontal,
+const viewModeIcons: Record<DocumentEditorViewMode, LucideIcon> = {
+  fit: Minimize2,
+  actual: RectangleHorizontal,
   wide: StretchHorizontal,
-  full: Maximize2,
 }
 
 const pageLayoutIcons: Record<DocumentPageOrientation, LucideIcon> = {
@@ -91,7 +92,7 @@ export function DocumentCommandBar({ actions }: { actions: DocumentCommandAction
   const rootRef = useRef<HTMLDivElement>(null)
   const closeMenu = () => setOpenMenu(null)
   const toggleMenu = (menu: MenuId) => setOpenMenu(current => current === menu ? null : menu)
-  const PageWidthIcon = pageWidthIcons[actions.pageWidth]
+  const ViewModeIcon = viewModeIcons[actions.viewMode]
   const PageLayoutIcon = pageLayoutIcons[actions.pageLayout.orientation]
 
   useEffect(() => {
@@ -221,29 +222,29 @@ export function DocumentCommandBar({ actions }: { actions: DocumentCommandAction
             <button
               type="button"
               className={iconButtonClass}
-              aria-label={t('toolbar.pageWidth')}
-              title={t('toolbar.pageWidth')}
-              onClick={() => toggleMenu('width')}
+              aria-label={t('toolbar.editorView')}
+              title={t('toolbar.editorView')}
+              onClick={() => toggleMenu('view')}
             >
-              <PageWidthIcon size={14} />
+              <ViewModeIcon size={14} />
             </button>
-            {openMenu === 'width' && (
+            {openMenu === 'view' && (
               <div role="menu" data-placement="bottom-end" className={menuPanelClass}>
                 {[
-                  ['normal', t('toolbar.widthNormal')],
-                  ['wide', t('toolbar.widthWide')],
-                  ['full', t('toolbar.widthFull')],
+                  ['fit', t('toolbar.viewFit')],
+                  ['actual', t('toolbar.viewActual')],
+                  ['wide', t('toolbar.viewWide')],
                 ].map(([value, label]) => (
                   <button
                     key={value}
                     type="button"
                     role="menuitemradio"
-                    aria-checked={actions.pageWidth === value}
+                    aria-checked={actions.viewMode === value}
                     className={menuButtonClass}
-                    onClick={() => runCommand(() => actions.onPageWidthChange(value as DocumentPageWidth), closeMenu)}
+                    onClick={() => runCommand(() => actions.onViewModeChange(value as DocumentEditorViewMode), closeMenu)}
                   >
                     <span className="inline-flex h-3.5 w-3.5 items-center justify-center">
-                      {actions.pageWidth === value && <Check size={13} />}
+                      {actions.viewMode === value && <Check size={13} />}
                     </span>
                     {label}
                   </button>

@@ -33,6 +33,8 @@ pub struct ManifestCreatedBy {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ManifestPresentation {
     #[serde(default)]
+    pub screen: Option<String>,
+    #[serde(default)]
     pub print: Option<String>,
     #[serde(rename = "docxReference", default)]
     pub docx_reference: Option<String>,
@@ -88,6 +90,7 @@ mod tests {
           "spec": "https://github.com/laofahai/mark-doc/blob/main/docs/spec/markdoc-package-v1.md",
           "createdBy": { "name": "MarkDoc", "agent": "codex" },
           "presentation": {
+            "screen": "presentation/screen.css",
             "docxReference": "presentation/reference.docx",
             "theme": "board",
             "page": {
@@ -104,6 +107,10 @@ mod tests {
         let serialized = serde_json::to_value(&manifest).unwrap();
         assert_eq!(serialized["x-ai"]["summary"], "custom");
         assert_eq!(serialized["createdBy"]["agent"], "codex");
+        assert_eq!(
+            serialized["presentation"]["screen"],
+            "presentation/screen.css"
+        );
         assert_eq!(serialized["presentation"]["theme"], "board");
         assert_eq!(
             serialized["presentation"]["page"]["orientation"],

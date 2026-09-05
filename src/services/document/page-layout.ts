@@ -150,6 +150,7 @@ export function buildPrintPageCss(value: unknown) {
     '  html[data-markdoc-printing="true"] [data-markdoc-print-root] { position: absolute !important; inset: 0 auto auto 0 !important; width: 100% !important; min-height: 0 !important; overflow: visible !important; }',
     '  html[data-markdoc-printing="true"] [data-markdoc-print-hidden] { display: none !important; }',
     '  html[data-markdoc-printing="true"] .markdoc-editor-scroll { overflow: visible !important; }',
+    '  html[data-markdoc-printing="true"] .markdoc-document-canvas { display: block !important; min-height: 0 !important; padding: 0 !important; background: #fff !important; }',
     '  html[data-markdoc-printing="true"] .markdoc-tiptap-editor .ProseMirror { width: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; border: 0 !important; box-shadow: none !important; transform: none !important; color: #111 !important; background: #fff !important; }',
     '}',
   ].join('\n')

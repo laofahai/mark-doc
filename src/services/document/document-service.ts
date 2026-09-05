@@ -107,16 +107,13 @@ export class DocumentService {
       const files = this.packageFiles(document, workspace, entry)
       const manifest = this.packageManifestForExport(document, entry)
       const exportedWorkspace = manifest ? { ...workspace, packageManifest: manifest } : workspace
-      const preservedFiles = document.source.type === 'package'
-        ? [...new Set((document.workspace.packageQuarantined ?? []).filter(path => this.isPackageContentPath(path, entry)))].sort()
-        : []
       const exported = await this.packageExporter.export(workspace, {
         outputPath: packagePath,
         entry,
         files,
         manifest,
         sourcePackagePath: document.source.type === 'package' ? document.source.packagePath : undefined,
-        preservedFiles,
+        preservedFiles: this.preservedPackageFiles(document, entry),
       })
       if (!exported.ok) return exported
       return ok({ ...document, source: { type: 'package', packagePath, extractedWorkspacePath: workspace.rootPath! }, workspace: exportedWorkspace, dirty: { markdown: false, assets: false, presentation: false } })
@@ -147,6 +144,8 @@ export class DocumentService {
         entry,
         files,
         manifest,
+        sourcePackagePath: document.source.type === 'package' ? document.source.packagePath : undefined,
+        preservedFiles: this.preservedPackageFiles(document, entry),
       })
       if (!exported.ok) return exported
       return ok({ ...document, source: { type: 'package', packagePath, extractedWorkspacePath: workspace.rootPath! }, workspace: exportedWorkspace, dirty: { markdown: false, assets: false, presentation: false } })
@@ -223,6 +222,12 @@ export class DocumentService {
       ? [entry, ...workspace.packageEntries, ...(document.source.type === 'package' ? this.currentAssetReferences(document) : [])]
       : [entry, ...this.currentAssetReferences(document)]
     return [...new Set(candidates.filter(path => this.isPackageContentPath(path, entry)))].sort()
+  }
+
+  private preservedPackageFiles(document: DocumentModel, entry: string) {
+    return document.source.type === 'package'
+      ? [...new Set((document.workspace.packageQuarantined ?? []).filter(path => this.isPackageContentPath(path, entry)))].sort()
+      : []
   }
 
   private currentAssetReferences(document: DocumentModel) {

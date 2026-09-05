@@ -13,7 +13,7 @@ export interface PackageManifest {
   schema?: string
   spec?: string
   createdBy?: { name: string; [key: string]: unknown }
-  presentation?: { print?: string; docxReference?: string; page?: unknown; [key: string]: unknown }
+  presentation?: { screen?: string; print?: string; docxReference?: string; page?: unknown; [key: string]: unknown }
   [key: string]: unknown
 }
 

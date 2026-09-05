@@ -86,6 +86,7 @@ export function TiptapMarkDocEditor({
         class: 'markdoc-prosemirror',
         'data-testid': 'markdoc-editor-content',
         'data-markdoc-editor-content': 'true',
+        'data-markdoc-document-page': 'true',
       },
       handleDOMEvents: {
         paste: (_view, event) => {

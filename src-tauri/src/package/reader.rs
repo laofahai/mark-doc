@@ -11,6 +11,12 @@ use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use zip::ZipArchive;
 
+#[derive(Debug, Clone, Copy)]
+enum ManifestResourceKind {
+    Css,
+    Docx,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackageReadResult {
     pub manifest: MarkDocManifest,
@@ -54,8 +60,8 @@ pub fn read_mdoc_package(package_path: String) -> Result<PackageReadResult, Stri
             .map_err(|_| "package.invalidManifest".to_string())?,
         "package.invalidManifest",
     )?;
-    let manifest_json = String::from_utf8(manifest_bytes)
-        .map_err(|_| "package.invalidManifest".to_string())?;
+    let manifest_json =
+        String::from_utf8(manifest_bytes).map_err(|_| "package.invalidManifest".to_string())?;
 
     let manifest: MarkDocManifest =
         serde_json::from_str(&manifest_json).map_err(|_| "package.invalidManifest".to_string())?;
@@ -87,6 +93,7 @@ pub fn read_mdoc_package(package_path: String) -> Result<PackageReadResult, Stri
     }
 
     for resource in unsafe_manifest_resources(&manifest) {
+        entries.retain(|name| name != &resource);
         push_unique(&mut quarantined, resource);
     }
     let missing_resources = missing_manifest_resources(&manifest, &package_names);
@@ -295,27 +302,40 @@ fn is_manifest_docx_reference(name: &str, manifest: &MarkDocManifest) -> bool {
         && reference.to_ascii_lowercase().ends_with(".docx")
 }
 
-fn manifest_presentation_resources(manifest: &MarkDocManifest) -> Vec<(&str, bool)> {
+fn manifest_presentation_resources(
+    manifest: &MarkDocManifest,
+) -> Vec<(&str, ManifestResourceKind)> {
     let Some(presentation) = manifest.presentation.as_ref() else {
         return Vec::new();
     };
     let mut resources = Vec::new();
+    if let Some(screen) = presentation.screen.as_deref() {
+        resources.push((screen, ManifestResourceKind::Css));
+    }
     if let Some(print) = presentation.print.as_deref() {
-        resources.push((print, false));
+        resources.push((print, ManifestResourceKind::Css));
     }
     if let Some(docx_reference) = presentation.docx_reference.as_deref() {
-        resources.push((docx_reference, true));
+        resources.push((docx_reference, ManifestResourceKind::Docx));
     }
     resources
+}
+
+fn has_manifest_resource_extension(reference: &str, kind: ManifestResourceKind) -> bool {
+    let lower = reference.to_ascii_lowercase();
+    match kind {
+        ManifestResourceKind::Css => lower.ends_with(".css"),
+        ManifestResourceKind::Docx => lower.ends_with(".docx"),
+    }
 }
 
 fn unsafe_manifest_resources(manifest: &MarkDocManifest) -> Vec<String> {
     manifest_presentation_resources(manifest)
         .into_iter()
-        .filter(|(reference, requires_docx)| {
+        .filter(|(reference, kind)| {
             is_url_like(reference)
                 || !is_safe_package_path(reference)
-                || (*requires_docx && !reference.to_ascii_lowercase().ends_with(".docx"))
+                || !has_manifest_resource_extension(reference, *kind)
         })
         .map(|(reference, _)| reference.to_string())
         .collect()
@@ -327,10 +347,10 @@ fn missing_manifest_resources(
 ) -> Vec<String> {
     manifest_presentation_resources(manifest)
         .into_iter()
-        .filter(|(reference, requires_docx)| {
+        .filter(|(reference, kind)| {
             !is_url_like(reference)
                 && is_safe_package_path(reference)
-                && (!*requires_docx || reference.to_ascii_lowercase().ends_with(".docx"))
+                && has_manifest_resource_extension(reference, *kind)
                 && !package_names.contains(*reference)
         })
         .map(|(reference, _)| reference.to_string())
@@ -468,7 +488,10 @@ mod tests {
         write_package(
             &path,
             &MarkDocManifest::new("document.md"),
-            &[("document.md", "# Hello"), ("assets/icon.svg", svg.as_str())],
+            &[
+                ("document.md", "# Hello"),
+                ("assets/icon.svg", svg.as_str()),
+            ],
         );
 
         assert_eq!(
@@ -536,6 +559,7 @@ mod tests {
         let path = dir.path().join("reference.mdoc");
         let mut manifest = MarkDocManifest::new("document.md");
         manifest.presentation = Some(ManifestPresentation {
+            screen: None,
             print: None,
             docx_reference: Some("https://example.com/reference.docx".to_string()),
             extensions: serde_json::Map::new(),
@@ -551,12 +575,49 @@ mod tests {
     }
 
     #[test]
+    fn quarantines_manifest_presentation_resources_with_wrong_extensions() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("wrong-presentation-resource.mdoc");
+        let mut manifest = MarkDocManifest::new("document.md");
+        manifest.presentation = Some(ManifestPresentation {
+            screen: Some("presentation/screen.txt".to_string()),
+            print: Some("presentation/print.png".to_string()),
+            docx_reference: Some("presentation/reference.txt".to_string()),
+            extensions: serde_json::Map::new(),
+        });
+        write_package(
+            &path,
+            &manifest,
+            &[
+                ("document.md", "# Hello"),
+                ("presentation/screen.txt", "screen"),
+                ("presentation/print.png", "print"),
+                ("presentation/reference.txt", "reference"),
+            ],
+        );
+
+        let result = read_mdoc_package(path.to_string_lossy().to_string()).unwrap();
+
+        assert_eq!(result.entries, vec!["document.md"]);
+        assert_eq!(
+            result.quarantined,
+            vec![
+                "presentation/screen.txt",
+                "presentation/print.png",
+                "presentation/reference.txt"
+            ]
+        );
+        assert_eq!(result.missing_resources, Vec::<String>::new());
+    }
+
+    #[test]
     fn extracts_manifest_docx_reference_as_safe_presentation_resource() {
         let dir = tempfile::tempdir().unwrap();
         let package_path = dir.path().join("reference.mdoc");
         let workspace_path = dir.path().join("workspace");
         let mut manifest = MarkDocManifest::new("document.md");
         manifest.presentation = Some(ManifestPresentation {
+            screen: None,
             print: None,
             docx_reference: Some("presentation/reference.docx".to_string()),
             extensions: serde_json::Map::new(),
@@ -594,6 +655,7 @@ mod tests {
         let workspace_path = dir.path().join("workspace");
         let mut manifest = MarkDocManifest::new("document.md");
         manifest.presentation = Some(ManifestPresentation {
+            screen: Some("presentation/screen.css".to_string()),
             print: Some("presentation/print.css".to_string()),
             docx_reference: Some("presentation/reference.docx".to_string()),
             extensions: serde_json::Map::new(),
@@ -605,7 +667,11 @@ mod tests {
         assert_eq!(inspected.quarantined, Vec::<String>::new());
         assert_eq!(
             inspected.missing_resources,
-            vec!["presentation/print.css", "presentation/reference.docx"]
+            vec![
+                "presentation/screen.css",
+                "presentation/print.css",
+                "presentation/reference.docx"
+            ]
         );
 
         let validation = validate_mdoc_package(package_path.to_string_lossy().to_string()).unwrap();
@@ -624,7 +690,11 @@ mod tests {
         .unwrap();
         assert_eq!(
             extracted.missing_resources,
-            vec!["presentation/print.css", "presentation/reference.docx"]
+            vec![
+                "presentation/screen.css",
+                "presentation/print.css",
+                "presentation/reference.docx"
+            ]
         );
     }
 

@@ -18,11 +18,12 @@ vi.mock('react-i18next', () => ({
 }))
 
 vi.mock('../../components/Editor/Editor', () => ({
-  default: ({ content, onChange }: {
+  default: ({ content, onChange, viewMode }: {
     content: string
+    viewMode: string
     onChange: (markdown: string) => void
   }) => (
-    <div data-testid="editor">
+    <div data-testid="editor" data-view-mode={viewMode}>
       <textarea
         aria-label="editor-content"
         value={content}
@@ -32,10 +33,10 @@ vi.mock('../../components/Editor/Editor', () => ({
   ),
 }))
 
-function renderPage() {
+function renderPage(viewMode: 'fit' | 'actual' | 'wide' = 'fit') {
   return render(
     <DocumentProvider>
-      <EditorPage pageWidth="normal" />
+      <EditorPage viewMode={viewMode} />
     </DocumentProvider>,
   )
 }
@@ -69,5 +70,12 @@ describe('EditorPage document actions', () => {
       source: { type: 'new' },
       markdown: '# Draft',
     }))
+  })
+
+  it('passes editor view mode as screen-only state to the editor shell', async () => {
+    renderPage('wide')
+    fireEvent.click(screen.getAllByRole('button')[0])
+
+    expect(await screen.findByTestId('editor')).toHaveAttribute('data-view-mode', 'wide')
   })
 })

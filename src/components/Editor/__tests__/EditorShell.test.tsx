@@ -20,6 +20,7 @@ describe('MarkDoc editor shell', () => {
       <Editor
         content="# Title"
         onChange={() => {}}
+        viewMode="actual"
         pageLayout={{
           size: 'a4',
           orientation: 'landscape',
@@ -29,6 +30,7 @@ describe('MarkDoc editor shell', () => {
     )
 
     const shell = await screen.findByTestId('markdoc-editor-shell')
+    expect(shell).toHaveAttribute('data-markdoc-view-mode', 'actual')
     expect(shell).toHaveAttribute('data-markdoc-page-size', 'a4')
     expect(shell).toHaveAttribute('data-markdoc-page-orientation', 'landscape')
     expect(shell).toHaveStyle({
@@ -39,6 +41,11 @@ describe('MarkDoc editor shell', () => {
       '--markdoc-page-margin-bottom': '14mm',
       '--markdoc-page-margin-left': '16mm',
     })
+    expect(screen.getByTestId('markdoc-document-canvas')).toBeInTheDocument()
+    expect(screen.getByTestId('markdoc-editor-toolbar-layer')).toContainElement(
+      screen.getByRole('toolbar', { name: 'editor.formattingToolbar' }),
+    )
+    expect(await screen.findByTestId('markdoc-editor-content')).toHaveAttribute('data-markdoc-document-page', 'true')
   })
 
   it('imports pasted screenshots into assets before inserting Markdown', async () => {
@@ -70,6 +77,16 @@ describe('MarkDoc editor shell', () => {
 
     expect(prompt).toHaveBeenCalledWith('editor.linkUrl', 'https://')
     prompt.mockRestore()
+  })
+
+  it('opens editor toolbar popovers downward from the top toolbar', async () => {
+    render(<Editor content="colored text" onChange={() => {}} />)
+
+    const colorButton = await screen.findByLabelText('editor.textColor')
+    await waitFor(() => expect(colorButton).not.toBeDisabled())
+    fireEvent.click(colorButton)
+
+    expect(screen.getByRole('dialog', { name: 'editor.textColor' })).toHaveAttribute('data-placement', 'bottom')
   })
 
   it('logs pasted image import failures instead of leaving unhandled promises', async () => {

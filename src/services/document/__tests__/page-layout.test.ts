@@ -105,6 +105,7 @@ describe('document page layout', () => {
       '--markdoc-page-margin-left': '14mm',
     })
     expect(buildPrintPageCss(layout)).toContain('@page { size: A4 landscape; margin: 12mm 14mm 12mm 14mm; }')
+    expect(buildPrintPageCss(layout)).toContain('.markdoc-document-canvas { display: block !important; min-height: 0 !important; padding: 0 !important; background: #fff !important; }')
   })
 
   it('installs temporary print CSS, invokes the print dialog, and cleans up after printing', () => {

@@ -4,7 +4,7 @@ import { LinchDesktopProvider, Shell, Separator, addI18nResources } from '@linch
 import { EditorPage } from './pages/EditorPage'
 import { Sidebar } from './components/Sidebar'
 import { SidebarResizeHandle } from './components/SidebarResizeHandle'
-import { DEFAULT_SIDEBAR_WIDTH, clampSidebarWidth, effectiveEditorPageWidth, effectiveSidebarWidth, type PageWidth } from './components/sidebar-width'
+import { DEFAULT_SIDEBAR_WIDTH, clampSidebarWidth, effectiveEditorViewMode, effectiveSidebarWidth, type EditorViewMode } from './components/sidebar-width'
 import { DocumentCommandBar } from './components/DocumentCommandBar'
 import { DocumentProvider, useDocument } from './contexts/DocumentContext'
 import { PandocGuard } from './components/PandocGuard'
@@ -65,16 +65,16 @@ function TitleLeft() {
 }
 
 function TitleRight({
-  pageWidth,
-  onPageWidthChange,
+  viewMode,
+  onViewModeChange,
   onOpenSettings,
 }: {
-  pageWidth: PageWidth
-  onPageWidthChange: (width: PageWidth) => void
+  viewMode: EditorViewMode
+  onViewModeChange: (mode: EditorViewMode) => void
   onOpenSettings: () => void
 }) {
   const { t } = useTranslation()
-  const documentCommands = useDocumentCommandActions({ pageWidth, onPageWidthChange })
+  const documentCommands = useDocumentCommandActions({ viewMode, onViewModeChange })
   return (
     <div className="flex items-center gap-1">
       <DocumentCommandBar actions={documentCommands.actions} />
@@ -93,13 +93,13 @@ function TitleRight({
 
 function AppShell() {
   useDisableNativeContextMenu()
-  const [pageWidth, setPageWidth] = useState<PageWidth>('wide')
+  const [viewMode, setViewMode] = useState<EditorViewMode>('fit')
   const [hasSidebarContent, setHasSidebarContent] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth || MIN_VIEWPORT_WIDTH)
   const activeSidebarWidth = effectiveSidebarWidth({ hasSidebarContent, requestedWidth: sidebarWidth, viewportWidth })
-  const activePageWidth = effectiveEditorPageWidth(pageWidth, viewportWidth)
+  const activeViewMode = effectiveEditorViewMode(viewMode, viewportWidth)
 
   useEffect(() => {
     const updateViewportWidth = () => setViewportWidth(window.innerWidth || MIN_VIEWPORT_WIDTH)
@@ -124,8 +124,8 @@ function AppShell() {
         left: <TitleLeft />,
         right: (
           <TitleRight
-            pageWidth={pageWidth}
-            onPageWidthChange={setPageWidth}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
             onOpenSettings={() => setSettingsOpen(true)}
           />
         ),
@@ -153,7 +153,7 @@ function AppShell() {
       <BrowserRouter>
         <Routes>
           <Route element={<Shell />}>
-            <Route path="/" element={<EditorPage pageWidth={activePageWidth} />} />
+            <Route path="/" element={<EditorPage viewMode={activeViewMode} />} />
           </Route>
         </Routes>
       </BrowserRouter>

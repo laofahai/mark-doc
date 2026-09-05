@@ -2,6 +2,7 @@ import { useState, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ImportPastedImage } from '../../editor-core/asset-bridge'
 import type { LocalResourceUrlResolver } from '../../editor-core/resource-security'
+import type { EditorViewMode } from '../sidebar-width'
 import {
   DEFAULT_PAGE_LAYOUT,
   normalizePageLayout,
@@ -19,6 +20,7 @@ export interface EditorProps {
   onChange?: (markdown: string) => void
   onAdapterReady?: (adapter: DocumentEditorAdapter) => void
   zoom?: number
+  viewMode?: EditorViewMode
   pageLayout?: DocumentPageLayout
   securityPolicy?: PackageSecurityPolicy | null
   onImagePaste?: ImportPastedImage
@@ -30,6 +32,7 @@ export function EditorShell({
   onChange,
   onAdapterReady,
   zoom = 100,
+  viewMode = 'fit',
   pageLayout = DEFAULT_PAGE_LAYOUT,
   securityPolicy,
   onImagePaste,
@@ -50,11 +53,15 @@ export function EditorShell({
       data-testid="markdoc-editor-shell"
       data-markdoc-editor-root
       data-markdoc-print-root
+      data-markdoc-view-mode={viewMode}
       data-markdoc-page-size={normalizedPageLayout.size}
       data-markdoc-page-orientation={normalizedPageLayout.orientation}
       style={shellStyle}
     >
-      <div className="markdoc-editor-scroll">
+      <EditorPopoverLayer>
+        <EditorToolbar adapter={adapter} revision={revision} onImagePaste={onImagePaste} />
+      </EditorPopoverLayer>
+      <div className="markdoc-document-canvas markdoc-editor-scroll" data-testid="markdoc-document-canvas">
         <TiptapMarkDocEditor
           content={content}
           placeholder={t('editor.placeholder')}
@@ -67,9 +74,6 @@ export function EditorShell({
           resolveAssetUrl={resolveAssetUrl}
         />
       </div>
-      <EditorPopoverLayer>
-        <EditorToolbar adapter={adapter} revision={revision} onImagePaste={onImagePaste} />
-      </EditorPopoverLayer>
     </section>
   )
 }

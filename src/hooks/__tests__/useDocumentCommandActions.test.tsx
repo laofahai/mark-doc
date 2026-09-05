@@ -40,8 +40,8 @@ vi.mock('react-i18next', () => ({
 function Harness() {
   const documentContext = useDocument()
   const commands = useDocumentCommandActions({
-    pageWidth: 'normal',
-    onPageWidthChange: vi.fn(),
+    viewMode: 'fit',
+    onViewModeChange: vi.fn(),
   })
 
   return (

@@ -10,8 +10,8 @@ const baseActions = {
   onOpen: vi.fn(),
   onOpenFolder: vi.fn(),
   hasActiveDocument: true,
-  pageWidth: 'normal' as const,
-  onPageWidthChange: vi.fn(),
+  viewMode: 'fit' as const,
+  onViewModeChange: vi.fn(),
   pageLayout: {
     size: 'a4' as const,
     orientation: 'portrait' as const,
@@ -31,7 +31,10 @@ vi.mock('react-i18next', () => ({
       'toolbar.documentCommands': 'Document commands',
       'toolbar.file': 'File',
       'toolbar.save': 'Save',
-      'toolbar.pageWidth': 'Page Width',
+      'toolbar.editorView': 'View',
+      'toolbar.viewFit': 'Fit Window',
+      'toolbar.viewActual': 'Actual Size',
+      'toolbar.viewWide': 'Wide Canvas',
       'toolbar.pageSetup': 'Page Setup',
       'toolbar.print': 'Print',
       'toolbar.pageSizeA4': 'A4',
@@ -53,7 +56,7 @@ describe('DocumentCommandBar', () => {
     expect(commandBar).toHaveClass('document-command-bar', 'document-command-bar--header')
     expect(commandBar).toContainElement(screen.getByRole('button', { name: 'File' }))
     expect(commandBar).toContainElement(screen.getByRole('button', { name: 'Save' }))
-    expect(commandBar).toContainElement(screen.getByRole('button', { name: 'Page Width' }))
+    expect(commandBar).toContainElement(screen.getByRole('button', { name: 'View' }))
     expect(commandBar).toContainElement(screen.getByRole('button', { name: 'Page Setup' }))
     expect(commandBar).toContainElement(screen.getByRole('button', { name: 'Print' }))
   })
@@ -65,20 +68,31 @@ describe('DocumentCommandBar', () => {
     expect(commandBar).toContainElement(screen.getByRole('button', { name: 'File' }))
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Export' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Page Width' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'View' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Page Setup' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Print' })).not.toBeInTheDocument()
   })
 
   it.each([
-    ['normal', 'lucide-rectangle-horizontal'],
+    ['fit', 'lucide-minimize-2'],
+    ['actual', 'lucide-rectangle-horizontal'],
     ['wide', 'lucide-stretch-horizontal'],
-    ['full', 'lucide-maximize-2'],
-  ] as const)('renders the %s page width icon on the header button', (pageWidth, iconClass) => {
-    render(<DocumentCommandBar actions={{ ...baseActions, pageWidth }} />)
+  ] as const)('renders the %s editor view icon on the header button', (viewMode, iconClass) => {
+    render(<DocumentCommandBar actions={{ ...baseActions, viewMode }} />)
 
-    const widthButton = screen.getByRole('button', { name: 'Page Width' })
-    expect(widthButton.querySelector(`.${iconClass}`)).toBeInTheDocument()
+    const viewButton = screen.getByRole('button', { name: 'View' })
+    expect(viewButton.querySelector(`.${iconClass}`)).toBeInTheDocument()
+  })
+
+  it('changes editor view mode without touching document page layout', () => {
+    const actions = { ...baseActions, onViewModeChange: vi.fn(), onPageLayoutChange: vi.fn() }
+    render(<DocumentCommandBar actions={actions} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'View' }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Actual Size' }))
+
+    expect(actions.onViewModeChange).toHaveBeenCalledWith('actual')
+    expect(actions.onPageLayoutChange).not.toHaveBeenCalled()
   })
 
   it('saves and opens export choices from the command bar', () => {

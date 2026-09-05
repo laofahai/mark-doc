@@ -498,6 +498,8 @@ The editor-core work is complete only when:
 - outline click scrolls to the heading without later jumping to the top
 - A4/Letter and portrait/landscape page layout affect the editor paper surface
   and desktop print CSS without polluting Markdown
+- future custom CSS targets the document page scope and is loaded only through
+  an explicit presentation trust path, not by global stylesheet injection
 - Chinese and English UI keys are complete
 - unit, integration, and real Tauri smoke tests pass
 

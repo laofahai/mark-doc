@@ -40,11 +40,17 @@
       "type": "object",
       "additionalProperties": true,
       "properties": {
+        "screen": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$))(?![A-Za-z][A-Za-z0-9+.-]*:).+\\.css$"
+        },
         "print": {
-          "type": "string"
+          "type": "string",
+          "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$))(?![A-Za-z][A-Za-z0-9+.-]*:).+\\.css$"
         },
         "docxReference": {
-          "type": "string"
+          "type": "string",
+          "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$))(?![A-Za-z][A-Za-z0-9+.-]*:).+\\.docx$"
         },
         "page": {
           "type": "object",

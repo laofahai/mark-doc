@@ -339,6 +339,12 @@ Deleting `presentation/` must not make the document semantically unreadable.
 does not remove it from a valid `.mdoc` package. Plain Markdown files should not
 gain page metadata unless the user explicitly saves them as `.mdoc`.
 
+Custom CSS belongs behind an explicit style trust boundary. `screen` and
+`print` may point to package-relative CSS resources, but package readers should
+only identify, validate, quarantine, and preserve them by default. The editor
+must load them only after a user-visible trust decision, and custom CSS should
+target the document page scope rather than the app shell.
+
 The built-in Chinese formal `reference.docx` should become a built-in
 presentation profile, not special-case application logic.
 

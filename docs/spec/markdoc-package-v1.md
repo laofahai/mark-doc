@@ -59,6 +59,14 @@ and printing. It supports `a4` and `letter` page sizes, `portrait` and
 `in`, or `pt`. Plain Markdown remains the semantic source; page layout belongs
 in the manifest so Markdown content is not polluted with app-only metadata.
 
+`presentation.screen` and `presentation.print` are optional safe package-relative
+`.css` resource paths for future custom styling. Readers must treat them as
+declared resources, not as permission to load CSS automatically. MarkDoc
+quarantines CSS until the user explicitly trusts the document or enables that
+style layer. `presentation.docxReference` is an optional safe package-relative
+`.docx` template resource for export; remote references and non-DOCX paths are
+quarantined.
+
 ## Reading Order For Tools And AI
 
 1. Unzip the `.mdoc` file.
@@ -81,10 +89,11 @@ absolute paths, drive-prefix paths, backslashes, and `..` traversal.
 Assets and presentation resources are referenced from Markdown or manifest
 fields with package-relative paths. Remote resources are not trusted by default.
 Importers should quarantine active or high-risk resources such as CSS, SVG, and
-DOCX references until the user explicitly trusts them.
+remote or invalid DOCX references until the user explicitly trusts them.
 
 If `manifest.entry` is missing, the package cannot be opened normally. If a
-manifest presentation resource such as `presentation.print` or
+manifest presentation resource such as `presentation.screen`,
+`presentation.print`, or
 `presentation.docxReference` is missing, readers should report an integrity
 warning and still open the Markdown entry when it is present. Writers must not
 create a new package whose manifest points at resources that are not included.
