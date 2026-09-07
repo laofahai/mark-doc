@@ -1,8 +1,8 @@
 import type { JSONContent } from '@tiptap/core'
+import { MarkdownManager } from '@tiptap/markdown'
 
 const HTML_ATTR_RE = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*(["'])(.*?)\2/g
-const HTML_IMAGE_RE = /<img\b[^>]*>/gi
-const HTML_IMG_TAG_RE = /^<img\b([^>]*)>$/i
+const HTML_IMG_TAG_RE = /^<img\b((?:[^"'<>]|"[^"]*"|'[^']*')*)>$/i
 const STYLE_VALUE_MAX_LENGTH = 80
 
 export interface StyledElementMatch {
@@ -76,14 +76,54 @@ function imageTagToMarkdown(tag: string) {
 }
 
 export function normalizeHtmlImagesForMarkdown(markdown: string) {
-  let fenced = false
-  return markdown.split('\n').map(line => {
-    if (/^\s{0,3}(```|~~~)/.test(line)) {
-      fenced = !fenced
-      return line
+  if (!/<img\b/i.test(markdown)) return markdown
+  return normalizeImageTokens(markdown, imageLexer.instance.lexer(markdown))
+}
+
+const imageLexer = new MarkdownManager({ extensions: [] })
+
+interface ImageToken {
+  type?: string
+  raw?: string
+  tokens?: ImageToken[]
+  items?: ImageToken[]
+  header?: { tokens: ImageToken[] }[]
+  rows?: { tokens: ImageToken[] }[][]
+}
+
+function normalizeImageTokens(source: string, tokens: ImageToken[]): string {
+  let cursor = 0
+  let result = ''
+  let tableDepth = 0
+  for (const token of tokens) {
+    if (!token.raw) continue
+    const start = source.indexOf(token.raw, cursor)
+    // Container tokens can strip quote/list prefixes. Preserve their original source.
+    if (start < 0) return source
+    result += source.slice(cursor, start)
+    let replacement = token.raw
+    if (token.type === 'html') {
+      // Only standalone image tokens are converted; HTML containers retain HTML children.
+      const trimmed = token.raw.trim()
+      if (!tableDepth && HTML_IMG_TAG_RE.test(trimmed)) replacement = token.raw.replace(trimmed, () => imageTagToMarkdown(trimmed))
+      // HTML blocks may end at blank lines. Track table tags across lexer tokens,
+      // consuming quoted attributes and comments so their text cannot change nesting.
+      const tags = /<!--[\s\S]*?-->|<\/?([a-z][\w:-]*)\b(?:[^"'<>]|"[^"]*"|'[^']*')*>/gi
+      for (const match of token.raw.matchAll(tags)) {
+        if (match[1]?.toLowerCase() !== 'table') continue
+        tableDepth = Math.max(0, tableDepth + (match[0].startsWith('</') ? -1 : 1))
+      }
+    } else if (!tableDepth && token.type !== 'code' && token.type !== 'codespan') {
+      const children = token.tokens ?? token.items ?? [
+        ...(token.header ?? []).flatMap(cell => cell.tokens),
+        ...(token.rows ?? []).flatMap(row => row.flatMap(cell => cell.tokens)),
+      ]
+      if (children.length) replacement = normalizeImageTokens(token.raw, children)
     }
-    return fenced || /^ {4}/.test(line) ? line : line.replace(HTML_IMAGE_RE, tag => imageTagToMarkdown(tag))
-  }).join('\n')
+    result += replacement
+    cursor = start + token.raw.length
+  }
+  return result + source.slice(cursor)
 }
 
 export function matchStyledElementAtStart(source: string): StyledElementMatch | null {

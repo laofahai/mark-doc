@@ -2,12 +2,24 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import Editor from '../Editor'
 import { debugLog } from '../../../services/debug-log'
+import * as markdownCodec from '../../../editor-core/markdown-codec'
 
 vi.mock('../../../services/debug-log', () => ({
   debugLog: vi.fn(),
 }))
 
 describe('MarkDoc editor shell', () => {
+  it('does not normalize the entire document again when only zoom changes', async () => {
+    const prepare = vi.spyOn(markdownCodec, 'prepareMarkdownForEditor')
+    const content = '# Long document\n\n' + 'Paragraph.\n\n'.repeat(100)
+    const { rerender } = render(<Editor content={content} zoom={100} />)
+    await screen.findByRole('toolbar')
+    await waitFor(() => expect(screen.getByLabelText('editor.textColor')).not.toBeDisabled())
+    const calls = prepare.mock.calls.length
+    rerender(<Editor content={content} zoom={120} />)
+    expect(prepare).toHaveBeenCalledTimes(calls)
+    prepare.mockRestore()
+  })
   it('renders a MarkDoc-owned toolbar instead of moving library DOM', async () => {
     render(<Editor content="# Title" onChange={() => {}} />)
 
@@ -79,14 +91,14 @@ describe('MarkDoc editor shell', () => {
     prompt.mockRestore()
   })
 
-  it('opens editor toolbar popovers downward from the top toolbar', async () => {
+  it('opens editor toolbar popovers upward from the bottom toolbar', async () => {
     render(<Editor content="colored text" onChange={() => {}} />)
 
     const colorButton = await screen.findByLabelText('editor.textColor')
     await waitFor(() => expect(colorButton).not.toBeDisabled())
     fireEvent.click(colorButton)
 
-    expect(screen.getByRole('dialog', { name: 'editor.textColor' })).toHaveAttribute('data-placement', 'bottom')
+    expect(screen.getByRole('dialog', { name: 'editor.textColor' })).toHaveAttribute('data-placement', 'top')
   })
 
   it('logs pasted image import failures instead of leaving unhandled promises', async () => {

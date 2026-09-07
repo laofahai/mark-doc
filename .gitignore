@@ -10,3 +10,5 @@ src-tauri/.keys
 .worktrees/
 .superpowers/
 coverage/
+test-results/
+playwright-report/

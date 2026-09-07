@@ -18,7 +18,8 @@ import {
 } from 'lucide-react'
 import { getSidebarFileDisplay, type SidebarFileDisplay } from './sidebar-file-display'
 import { SidebarDocumentIcon } from './sidebar-document-icons'
-import { getSidebarOutline, type SidebarOutlineItem } from './sidebar-outline'
+import { getSidebarOutline, visibleSidebarOutline, type SidebarOutlineItem } from './sidebar-outline'
+import { VirtualOutlineList } from './VirtualOutlineList'
 
 interface FileNode {
   name: string
@@ -56,22 +57,7 @@ function SidebarFileIcon({ display }: { display: SidebarFileDisplay }) {
 }
 
 function hasOutlineChildren(items: SidebarOutlineItem[], index: number) {
-  const level = items[index].level
-  for (let i = index + 1; i < items.length; i += 1) {
-    if (items[i].level <= level) return false
-    if (items[i].level > level) return true
-  }
-  return false
-}
-
-function isOutlineItemHidden(items: SidebarOutlineItem[], index: number, collapsedIds: Set<string>) {
-  let level = items[index].level
-  for (let i = index - 1; i >= 0; i -= 1) {
-    if (items[i].level >= level) continue
-    if (collapsedIds.has(items[i].id)) return true
-    level = items[i].level
-  }
-  return false
+  return index + 1 < items.length && items[index + 1].level > items[index].level
 }
 
 export function Sidebar({ onSidebarStateChange }: SidebarProps) {
@@ -87,6 +73,7 @@ export function Sidebar({ onSidebarStateChange }: SidebarProps) {
   const [activeOutlineId, setActiveOutlineId] = useState<string | null>(null)
   const unwatchRef = useRef<(() => void) | null>(null)
   const outlineItems = useMemo(() => getSidebarOutline(activeDocument?.markdown ?? ''), [activeDocument?.markdown])
+  const visibleOutlineItems = useMemo(() => visibleSidebarOutline(outlineItems, collapsedOutlineIds), [outlineItems, collapsedOutlineIds])
   const outlineItemIds = useMemo(() => new Set(outlineItems.map(item => item.id)), [outlineItems])
   const collapsibleOutlineIds = useMemo(
     () => outlineItems.filter((_, index) => hasOutlineChildren(outlineItems, index)).map(item => item.id),
@@ -232,9 +219,7 @@ export function Sidebar({ onSidebarStateChange }: SidebarProps) {
 
   const focusOutlineItem = (item: SidebarOutlineItem) => {
     setActiveOutlineId(item.id)
-    if (documentContext.scrollActiveEditorToOutlineItem?.(item.id)) return
-    const target = document.querySelector<HTMLElement>(`[data-markdoc-editor-root] [data-markdoc-outline-id="${CSS.escape(item.id)}"]`)
-    target?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    documentContext.scrollActiveEditorToOutlineItem?.(item.id)
   }
 
   const toggleOutlineItem = (id: string) => {
@@ -301,9 +286,8 @@ export function Sidebar({ onSidebarStateChange }: SidebarProps) {
     if (outlineItems.length === 0) {
       return <div className="px-3 py-5 text-[12px] text-muted-foreground/60">{t('sidebar.noOutline')}</div>
     }
-    return outlineItems.map((item, index) => {
-      if (isOutlineItemHidden(outlineItems, index, collapsedOutlineIds)) return null
-      const hasChildren = hasOutlineChildren(outlineItems, index)
+    const renderItem = (item: SidebarOutlineItem) => {
+      const hasChildren = hasOutlineChildren(outlineItems, item.index)
       const collapsed = collapsedOutlineIds.has(item.id)
       const active = activeOutlineId === item.id
       return (
@@ -338,7 +322,10 @@ export function Sidebar({ onSidebarStateChange }: SidebarProps) {
           </button>
         </div>
       )
-    })
+    }
+    return visibleOutlineItems.length > 200
+      ? <VirtualOutlineList items={visibleOutlineItems} renderItem={renderItem} />
+      : visibleOutlineItems.map(renderItem)
   }
 
   const renderFiles = () => {

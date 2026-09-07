@@ -1,142 +1,90 @@
 # MarkDoc
 
-`.mdoc`-first desktop document editing for Markdown, images, and Word handoff.
+A desktop document editor built around Markdown. Keep your writing, images, and layout together in one `.mdoc` file.
 
-[Website](https://linch.tech/zh/products/mark-doc) | [中文](README.zh-CN.md)
+**English** | [简体中文](README.zh-CN.md) | [Releases](https://github.com/laofahai/mark-doc/releases)
 
-![License](https://img.shields.io/badge/license-MIT-green.svg)
-![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)
+Write a project plan, an illustrated guide, meeting notes, or a report. Edit
+directly on the page, organize sections with the outline, and share the finished
+document as a single file. Export to Word when that is what your team needs.
 
-MarkDoc's main file format is `.mdoc`. A `.mdoc` file is a portable document
-package: clean Markdown stays at the center, while images, Word export
-templates, and presentation resources travel with it in the same file.
+MarkDoc's main file format is `.mdoc`. It brings Markdown and its resources
+together without hiding the source in a proprietary document database.
+Standard `.md` files remain supported: use a package when you need one, not
+because the editor requires it.
 
-Plain Markdown still works when a document is only text. Word import/export is
-there for DOCX handoff, not as the product's storage model.
+## One Document, Everything Together
 
-## What It Does
+A Markdown file is easy to read and work with. Images usually live elsewhere.
+Move the file, send it to a colleague, or reorganize folders, and those links
+can break.
 
-- Edit `.mdoc` documents backed by clean Markdown.
-- Keep text, images, templates, and presentation resources in one file.
-- Edit Markdown in a WYSIWYG desktop editor.
-- Open `.md`, `.markdown`, `.txt`, `.mdoc`, `.docx`, and `.doc` files.
-- Keep plain text documents as normal Markdown or text files.
-- Save resource-heavy documents as one `.mdoc` file instead of leaving loose
-  asset folders beside Markdown.
-- Import Word documents into editable Markdown.
-- Export the current document to DOCX.
-- Use a built-in Word style template or your own `reference.docx`.
-- Set A4/Letter page layout, portrait/landscape orientation, and print the
-  current document from the desktop editor.
-- Work with tabs, a file sidebar, a document outline, light/dark themes, and
-  Chinese/English UI.
-- Check for app updates from Settings in desktop builds.
+With `.mdoc`, the text, images, and document presentation settings travel
+together. Open it, edit it, save it, send it. No separate asset folder to collect.
 
-## Basic Use
+The package is a ZIP file containing Markdown and a manifest. Other tools and
+AI agents can extract it and read the source without installing MarkDoc.
 
-Install the desktop build for your system from
-[GitHub Releases](https://github.com/laofahai/mark-doc/releases), then:
+## Write, Organize, Deliver
 
-1. Open an existing document or create a new one.
-2. Write in the editor. The toolbar formats Markdown without forcing you into
-   raw syntax.
-3. Save as `.mdoc` for normal MarkDoc work, especially when the document has
-   images, imported assets, templates, or presentation resources.
-4. Save as plain Markdown only when the document is text-only and you explicitly
-   want a normal `.md` file.
-5. Export DOCX when the file needs to be reviewed or delivered in Word.
+- **Write visually.** Format headings, lists, links, tables, and code without
+  switching away from your document. Paste images alongside the text.
+- **Keep your place.** Navigate a collapsible outline, browse the current
+  folder, and work across multiple document tabs.
+- **Shape the page.** Adjust table column widths, text colors, and highlights.
+  Choose A4 or Letter, portrait or landscape, then print.
+- **Stay with Markdown.** Keep ordinary documents as `.md`. Use the virtualized
+  source editor for large files.
+- **Work with Word users.** Import DOCX and export a Word copy with a built-in
+  or custom document template.
+- **Make yourself comfortable.** Light and dark themes, with English and
+  Chinese interface languages.
 
-## Which File Type Should I Use?
+## A Simple Workflow
 
-| Format | Use It For | Notes |
-| --- | --- | --- |
-| `.md`, `.markdown` | Text-first Markdown documents | Best when images and templates are not part of the file. |
-| `.txt` | Plain text notes | Opens as editable text. |
-| `.mdoc` | Markdown plus bundled images/templates/resources | A single portable package for richer documents. |
-| `.docx`, `.doc` | Word documents you need to import | Converted through Pandoc before editing. |
+1. Create a document or open an existing Markdown or DOCX file.
+2. Write, add images, and use the outline to move between sections.
+3. Press **Cmd+S** on macOS or **Ctrl+S** on Windows/Linux. Save as `.mdoc` when
+   you want the document and its resources in one file, or keep standard Markdown.
+4. Share the `.mdoc`, export DOCX, or print the document.
 
-## What Is `.mdoc`?
+| Format | Purpose |
+| --- | --- |
+| `.mdoc` | A portable document with Markdown, images, and presentation resources. |
+| `.md`, `.markdown` | Standard Markdown for use across editors and tools. |
+| `.txt` | Plain text notes. |
+| `.docx` | Word import and export. |
 
-A `.mdoc` file is a ZIP package, not a normal `.md` file. It contains a
-`manifest.json`, a Markdown entry file, and optional assets.
+DOCX conversion uses Pandoc. MarkDoc converts document content rather than
+reproducing every feature of Word; retain the original when exact Word layout
+matters. Convert older binary `.doc` files to `.docx` if direct import fails.
 
-MarkDoc writes these stable package paths:
+## Open by Design
 
-- `manifest.json`
-- `document.md`
-- `README.md`
-- `assets/`
-- `presentation/`
+Inside an `.mdoc` package, `manifest.json` identifies the Markdown entry and
+resources. The included `README.md` explains how to read the document. Text
+remains accessible to scripts, other applications, and AI tools.
 
-External tools and AI agents can read `.mdoc` without installing MarkDoc:
+Custom-width tables use HTML within Markdown to preserve their dimensions.
+Page settings belong to the package manifest rather than the document text.
 
-1. Unzip the file.
-2. Validate `manifest.json`.
-3. Read `manifest.entry` as the canonical Markdown source.
-4. Resolve images and other resources relative to the package root.
-
-The package `README.md` is only a hint for humans and AI tools. The manifest is
-the source of truth.
-
-Page layout lives in `manifest.presentation.page`, not in Markdown text. Older
-tools can ignore it and still read the canonical Markdown entry.
-
-Full format spec: [docs/spec/markdoc-package-v1.md](docs/spec/markdoc-package-v1.md)
-
-## Word Conversion
-
-DOCX and `.doc` import/export require Pandoc.
-
-MarkDoc converts Word files into Markdown workspaces and extracts referenced
-images as local assets. Export creates a new DOCX from the current Markdown
-document.
-
-MarkDoc is not a full Word layout engine. Complex Word formatting, embedded
-objects, and exact visual layout may not round-trip perfectly.
-
-## Requirements
-
-- Node.js 20.19+ if running from source.
-- `pnpm`; this repository pins `pnpm@10.32.1`.
-- Rust stable toolchain if running the desktop app from source.
-- Pandoc for Word import/export.
-
-Pandoc examples:
-
-```bash
-brew install pandoc
-winget install -e --id JohnMacFarlane.Pandoc
-sudo apt install pandoc
-```
+[Read the `.mdoc` format specification](docs/spec/markdoc-package-v1.md).
 
 ## Run From Source
 
+Use Node.js 24, the pnpm version pinned in `package.json`, Rust stable, and the
+Tauri desktop prerequisites for your operating system. Word conversion also
+requires Pandoc.
+
 ```bash
+git clone https://github.com/laofahai/mark-doc.git
+cd mark-doc
 pnpm install
 pnpm tauri:dev
 ```
 
-Renderer-only development:
-
-```bash
-pnpm dev
-```
-
-Checks:
-
-```bash
-pnpm test
-pnpm run lint
-pnpm run build:check
-```
-
-Tauri/Rust tests:
-
-```bash
-cd src-tauri
-cargo test
-```
+This starts the desktop app, not a browser-only editor.
 
 ## License
 
-MIT License. See [LICENSE](LICENSE).
+[MIT](LICENSE).

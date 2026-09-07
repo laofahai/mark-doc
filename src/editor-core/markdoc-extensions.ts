@@ -15,6 +15,7 @@ import StarterKit from '@tiptap/starter-kit'
 import {
   Extension,
   Node,
+  type Extensions,
   type JSONContent,
   type MarkdownLexerConfiguration,
   type MarkdownParseHelpers,
@@ -22,6 +23,8 @@ import {
   type MarkdownToken,
 } from '@tiptap/core'
 import { addMarkToInlineContent, escapeHtmlAttribute, matchStyledElementAtStart } from './markdown-html'
+import { createTableHtmlSerializer, tableNeedsHtml } from './table-widths'
+import { ScaledTableResize } from './table-resize-scale'
 
 export interface MarkDocExtensionOptions {
   placeholder?: string
@@ -185,7 +188,15 @@ const MarkDocHighlight = Highlight.extend({
 })
 
 export function createMarkDocExtensions(options: MarkDocExtensionOptions = {}) {
-  return [
+  const serializeTable = createTableHtmlSerializer(() => extensions)
+  const MarkDocTable = Table.extend({
+    renderMarkdown(node, helpers, context) {
+      return tableNeedsHtml(node)
+        ? serializeTable(node)
+        : Table.config.renderMarkdown!.call(this, node, helpers, context)
+    },
+  })
+  const extensions: Extensions = [
     StarterKit.configure({
       heading: { levels: [1, 2, 3, 4, 5, 6] },
       link: false,
@@ -205,9 +216,12 @@ export function createMarkDocExtensions(options: MarkDocExtensionOptions = {}) {
       markdownLinks: true,
       isAllowedUri: uri => isAllowedLinkUri(uri),
     }),
-    Table.configure({
-      resizable: false,
+    MarkDocTable.configure({
+      resizable: true,
+      cellMinWidth: 64,
+      lastColumnResizable: true,
     }),
+    ScaledTableResize,
     TableRow,
     TableHeader,
     TableCell,
@@ -226,4 +240,5 @@ export function createMarkDocExtensions(options: MarkDocExtensionOptions = {}) {
       placeholder: options.placeholder ?? '',
     }),
   ]
+  return extensions
 }

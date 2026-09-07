@@ -24,11 +24,40 @@ jobs:
     runs-on: ubuntu-22.04
     outputs:
       version: ${{ steps.release-version.outputs.value }}
+      sha: ${{ steps.source.outputs.sha }}
     permissions:
       contents: read
 
     steps:
+      - name: Resolve release version
+        id: release-version
+        shell: bash
+        env:
+          WORKFLOW_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          VERSION="${WORKFLOW_VERSION:-$GITHUB_REF_NAME}"
+          if [[ ! "$VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo 'Expected an existing stable version tag such as v0.1.2' >&2
+            exit 1
+          fi
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ steps.release-version.outputs.value }}
+
+      - name: Pin source commit
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Check updater signing configuration
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo 'Configure TAURI_SIGNING_PRIVATE_KEY before building candidates' >&2
+            exit 1
+          fi
 
       - uses: pnpm/action-setup@v4
         with:
@@ -52,24 +81,52 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Resolve release version
-        id: release-version
-        shell: bash
+      - name: Validate release version
         env:
-          WORKFLOW_VERSION: ${{ github.event.inputs.version }}
-        run: |
-          if [ -n "$WORKFLOW_VERSION" ]; then
-            echo "value=$WORKFLOW_VERSION" >> "$GITHUB_OUTPUT"
-          else
-            echo "value=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
-          fi
-
-      - run: pnpm run release:check -- --release-version ${{ steps.release-version.outputs.value }}
+          RELEASE_VERSION: ${{ steps.release-version.outputs.value }}
+        run: pnpm run release:check -- --release-version "$RELEASE_VERSION"
       - run: pnpm run ci
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: release-browser-test-results
+          path: test-results/
+          retention-days: 7
+
+  prepare-draft:
+    name: Prepare candidate draft
+    needs: preflight
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    outputs:
+      release-id: ${{ steps.draft.outputs.id }}
+    steps:
+      - name: Create or reuse unpublished draft
+        id: draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --json isDraft > release.json; then
+            jq -e '.isDraft == true' release.json > /dev/null || {
+              echo 'Refusing to overwrite an already published release' >&2
+              exit 1
+            }
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "MarkDoc $RELEASE_TAG" --notes 'Candidate installers with signed updater artifacts. Native acceptance pending.'
+          fi
+          ID=$(gh release view "$RELEASE_TAG" --json databaseId --jq '.databaseId')
+          echo "id=$ID" >> "$GITHUB_OUTPUT"
 
   publish:
-    name: Publish ${{ matrix.name }}
-    needs: preflight
+    name: Build ${{ matrix.name }}
+    needs: [preflight, prepare-draft]
     runs-on: ${{ matrix.platform }}
     permissions:
       contents: write
@@ -96,6 +153,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
 
       - uses: pnpm/action-setup@v4
         with:
@@ -121,33 +180,50 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run release:check -- --release-version ${{ needs.preflight.outputs.version }}
+      - name: Validate release version
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+        run: pnpm run release:check -- --release-version "$RELEASE_VERSION"
 
       - uses: tauri-apps/tauri-action@v1
         env:
+          APPLE_SIGNING_IDENTITY: '-'
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
+          releaseId: ${{ needs.prepare-draft.outputs.release-id }}
           tagName: ${{ needs.preflight.outputs.version }}
           releaseName: MarkDoc ${{ needs.preflight.outputs.version }}
-          releaseBody: Signed desktop installers and updater metadata.
+          releaseBody: Candidate installers with signed updater artifacts. Native acceptance pending.
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
 
-  publish-release:
-    name: Publish GitHub Release
+  verify-candidate:
+    name: Verify candidate assets (keep draft)
     needs:
       - preflight
       - publish
     runs-on: ubuntu-22.04
     permissions:
-      contents: write
+      contents: read
 
     steps:
-      - name: Publish completed draft release
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Verify updater manifest and attachments
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.preflight.outputs.version }}
-        run: gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --title "MarkDoc $RELEASE_TAG" --notes "Signed desktop installers and updater metadata."
+        run: |
+          gh release view "$RELEASE_TAG" --json isDraft,tagName,assets > "$RUNNER_TEMP/release.json"
+          gh release download "$RELEASE_TAG" --pattern latest.json --dir "$RUNNER_TEMP/candidate"
+          node scripts/validate-release-assets.mjs "$RUNNER_TEMP/candidate/latest.json" "$RUNNER_TEMP/release.json" "$RELEASE_TAG" "$GH_REPO"
+          echo 'Candidate build verified. Release remains a draft pending native acceptance.' >> "$GITHUB_STEP_SUMMARY"

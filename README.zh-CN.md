@@ -1,126 +1,67 @@
 # MarkDoc
 
-以 `.mdoc` 为主格式的桌面文档编辑器。正文还是 Markdown，图片、模板和资源跟正文一起放进一个文件。
+以 Markdown 为正文的桌面文档编辑器。文字、图片和版式，一起放进一个 `.mdoc` 文件。
 
-[官网](https://linch.tech/zh/products/mark-doc) | [English](README.md)
+[English](README.md) | **简体中文** | [版本与下载](https://github.com/laofahai/mark-doc/releases)
 
-![License](https://img.shields.io/badge/license-MIT-green.svg)
-![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)
+写项目方案、图文教程、会议纪要或工作报告，在页面里直接编辑，通过大纲整理章节，写完后用一个文件交付。对方使用 Word，就导出 DOCX。
 
-MarkDoc 的主文件格式是 `.mdoc`。`.mdoc` 是可携带的文档包：Markdown 正文是中心，图片、Word 导出模板和演示资源跟它一起保存在同一个文件里。
+MarkDoc 的主文件格式是 `.mdoc`，把 Markdown 和随文资源放在一起，不把正文藏进专有数据库。普通 `.md` 文件也能照常使用，需要打包时再打包，不强制换格式。
 
-纯文字文档仍然可以用普通 Markdown。Word 导入导出用于 DOCX 交换，不作为 MarkDoc 的主存储格式。
+## 一份文档，完整带走
 
-## 它能做什么
+Markdown 正文易读、易处理，但图片通常放在另一个目录。移动文件、发给同事、重新整理文件夹时，图片链接就可能失效。
 
-- 编辑以 Markdown 为正文源的 `.mdoc` 文档。
-- 把正文、图片、模板和演示资源放进一个文件。
-- 用所见即所得编辑器写 Markdown。
-- 打开 `.md`、`.markdown`、`.txt`、`.mdoc`、`.docx` 和 `.doc`。
-- 纯文本内容继续保存为普通 Markdown 或文本文件。
-- 带图片、模板或其他资源的文档保存为一个 `.mdoc` 文件，不把资源散落在 Markdown 旁边。
-- 把 Word 文档导入为可编辑 Markdown。
-- 把当前文档导出为 DOCX。
-- 导出 DOCX 时使用内置样式模板，或选择自己的 `reference.docx`。
-- 设置 A4/Letter、横向/纵向页面版式，并从桌面编辑器直接打印当前文档。
-- 支持多标签、文件侧边栏、文档大纲、亮暗主题和中英文界面。
-- 桌面版可在设置里检查应用更新。
+`.mdoc` 让正文、图片和文档版式一起保存。打开、编辑、保存、发送，不用另找图片文件夹。
 
-## 基本用法
+它本质上是包含 Markdown 和清单的 ZIP 文件。其他工具和 AI 可以直接解压读取，不必安装 MarkDoc。
 
-先从 [GitHub Releases](https://github.com/laofahai/mark-doc/releases) 下载对应系统的桌面安装包，然后：
+## 从写作到交付
 
-1. 打开已有文档，或新建文档。
-2. 在编辑器里写内容。工具条会直接生成 Markdown 格式，不要求你手写语法。
-3. 正常使用 MarkDoc 时保存为 `.mdoc`，尤其是文档里有图片、导入资源、模板或演示资源时。
-4. 只有纯文字且明确想要普通 `.md` 文件时，再保存为 Markdown。
-5. 需要给 Word 用户审阅或交付时，导出 DOCX。
+- **直接编辑。** 标题、列表、链接、表格和代码，所见即所得。截图和图片直接粘贴到正文里。
+- **整理长文档。** 用可折叠大纲定位章节，切换目录树浏览文件，多标签处理不同文档。
+- **调整排版。** 拖动表格列宽，设置文字颜色与高亮，选择 A4 或 Letter、横向或纵向，再打印。
+- **保留 Markdown。** 普通文档继续保存为 `.md`，大文件使用按可见区域渲染的源码编辑器。
+- **与 Word 用户协作。** 导入 DOCX，使用内置或自定义文档模板导出 Word 文件。
+- **按习惯使用。** 亮暗主题，中英文界面。
 
-## 该用哪种格式？
+## 怎么用
 
-| 格式 | 适合场景 | 说明 |
-| --- | --- | --- |
-| `.md`、`.markdown` | 文字为主的 Markdown 文档 | 没有图片和模板资源时最简单。 |
-| `.txt` | 普通文本记录 | 按文本打开和编辑。 |
-| `.mdoc` | Markdown 加图片、模板、演示资源 | 一个文件带走所有资源，适合正式文档。 |
-| `.docx`、`.doc` | 需要导入的 Word 文件 | 先通过 Pandoc 转成 Markdown 再编辑。 |
+1. 新建文档，或打开已有的 Markdown、DOCX 文件。
+2. 写正文、添加图片，通过侧边栏大纲在章节间跳转。
+3. macOS 按 **Cmd+S**，Windows/Linux 按 **Ctrl+S**。需要把正文和资源一起保存时选择 `.mdoc`，也可以继续使用普通 Markdown。
+4. 发送 `.mdoc` 文档包，导出 DOCX，或直接打印。
 
-## `.mdoc` 是什么？
+| 格式 | 用途 |
+| --- | --- |
+| `.mdoc` | 随身携带的完整文档，包含 Markdown、图片和版式资源。 |
+| `.md`、`.markdown` | 标准 Markdown，配合其他编辑器和工具使用。 |
+| `.txt` | 纯文字记录。 |
+| `.docx` | 与 Word 交换文档。 |
 
-`.mdoc` 是 ZIP 文档包，不是普通 `.md` 文件。它包含 `manifest.json`、Markdown 正文入口和可选资源。
+DOCX 转换依赖 Pandoc。MarkDoc 转换的是文档内容，不复刻 Word 的全部功能；需要保留精确 Word 版式时，请保留原件。旧版二进制 `.doc` 文件若无法直接导入，请先转换为 `.docx`。
 
-MarkDoc 写入的稳定路径：
+## 文档始终可读
 
-- `manifest.json`
-- `document.md`
-- `README.md`
-- `assets/`
-- `presentation/`
+`.mdoc` 包内的 `manifest.json` 指向 Markdown 正文和资源，随附的 `README.md` 说明读取方式。正文仍可交给脚本、其他应用和 AI 工具处理。
 
-外部工具和 AI Agent 不需要安装 MarkDoc 也能读取 `.mdoc`：
+自定义列宽的表格使用 Markdown 内的 HTML 保留尺寸；页面设置放在文档包清单中，不混入正文。
 
-1. 把文件当作 ZIP 解压。
-2. 校验 `manifest.json`。
-3. 读取 `manifest.entry` 指向的 Markdown，作为正文来源。
-4. 按文档包根目录解析图片和其他资源。
-
-包内 `README.md` 只是给人和 AI 工具看的提示。真正的格式依据是 manifest。
-
-页面版式保存在 `manifest.presentation.page`，不会写进 Markdown 正文。旧工具不理解这个字段时，可以忽略它并继续读取 Markdown 入口。
-
-完整格式说明：[docs/spec/markdoc-package-v1.md](docs/spec/markdoc-package-v1.md)
-
-## Word 转换边界
-
-DOCX 和 `.doc` 导入导出依赖 Pandoc。
-
-MarkDoc 会把 Word 文件转成 Markdown workspace，并提取其中引用的图片。导出时，会从当前 Markdown 文档生成新的 DOCX。
-
-MarkDoc 不是完整的 Word 排版引擎。复杂格式、嵌入对象和精确版式不保证无损往返。
-
-## 环境要求
-
-- 从源码运行需要 Node.js 20.19+。
-- 使用 `pnpm`；仓库锁定 `pnpm@10.32.1`。
-- 从源码运行桌面端需要 Rust stable 工具链。
-- Word 导入导出需要 Pandoc。
-
-Pandoc 安装示例：
-
-```bash
-brew install pandoc
-winget install -e --id JohnMacFarlane.Pandoc
-sudo apt install pandoc
-```
+[查看 `.mdoc` 格式规范](docs/spec/markdoc-package-v1.md)。
 
 ## 从源码运行
 
+准备 Node.js 24、`package.json` 指定版本的 pnpm、Rust stable，以及当前系统的 Tauri 桌面开发依赖。需要 Word 转换时再安装 Pandoc。
+
 ```bash
+git clone https://github.com/laofahai/mark-doc.git
+cd mark-doc
 pnpm install
 pnpm tauri:dev
 ```
 
-只调试前端渲染层：
-
-```bash
-pnpm dev
-```
-
-检查命令：
-
-```bash
-pnpm test
-pnpm run lint
-pnpm run build:check
-```
-
-Tauri/Rust 测试：
-
-```bash
-cd src-tauri
-cargo test
-```
+这会启动桌面程序，不是仅在浏览器中运行的编辑器。
 
 ## 许可证
 
-MIT License。详见 [LICENSE](LICENSE)。
+[MIT](LICENSE)。

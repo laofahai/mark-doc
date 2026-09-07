@@ -131,7 +131,7 @@ export function EditorToolbar({ adapter, revision: _revision, onImagePaste }: Ed
               onMouseDown={event => event.preventDefault()}
               onClick={() => run(button.command, button.attrs)}
             >
-              <Icon size={17} strokeWidth={2} />
+              <Icon size={14} strokeWidth={1.75} />
             </button>
           )
         })}
@@ -148,7 +148,7 @@ export function EditorToolbar({ adapter, revision: _revision, onImagePaste }: Ed
           onMouseDown={event => event.preventDefault()}
           onClick={applyLink}
         >
-          <Link size={17} strokeWidth={2} />
+          <Link size={14} strokeWidth={1.75} />
         </button>
         <button
           type="button"
@@ -159,7 +159,7 @@ export function EditorToolbar({ adapter, revision: _revision, onImagePaste }: Ed
           onMouseDown={event => event.preventDefault()}
           onClick={() => uploadInputRef.current?.click()}
         >
-          <ImageUp size={17} strokeWidth={2} />
+          <ImageUp size={14} strokeWidth={1.75} />
         </button>
         <input
           ref={uploadInputRef}
@@ -183,7 +183,7 @@ export function EditorToolbar({ adapter, revision: _revision, onImagePaste }: Ed
             setPopover(popover === 'color' && colorKind === 'text' ? null : 'color')
           }}
         >
-          <Palette size={17} strokeWidth={2} />
+          <Palette size={14} strokeWidth={1.75} />
         </button>
         <button
           type="button"
@@ -198,7 +198,7 @@ export function EditorToolbar({ adapter, revision: _revision, onImagePaste }: Ed
             setPopover(popover === 'color' && colorKind === 'background' ? null : 'color')
           }}
         >
-          <Highlighter size={17} strokeWidth={2} />
+          <Highlighter size={14} strokeWidth={1.75} />
         </button>
         <button
           type="button"
@@ -210,11 +210,11 @@ export function EditorToolbar({ adapter, revision: _revision, onImagePaste }: Ed
           onMouseDown={event => event.preventDefault()}
           onClick={() => setPopover(popover === 'emoji' ? null : 'emoji')}
         >
-          <Smile size={17} strokeWidth={2} />
+          <Smile size={14} strokeWidth={1.75} />
         </button>
 
         {popover === 'color' && (
-          <div className="markdoc-toolbar-popover" role="dialog" aria-label={t(colorKind === 'text' ? 'editor.textColor' : 'editor.backgroundColor')} data-placement="bottom">
+          <div className="markdoc-toolbar-popover" role="dialog" aria-label={t(colorKind === 'text' ? 'editor.textColor' : 'editor.backgroundColor')} data-placement="top">
             <div className="markdoc-color-mode-row">
               <button type="button" className="markdoc-color-mode" aria-pressed={colorKind === 'text'} onClick={() => setColorKind('text')}>
                 {t('editor.textColor')}
@@ -250,7 +250,7 @@ export function EditorToolbar({ adapter, revision: _revision, onImagePaste }: Ed
         )}
 
         {popover === 'emoji' && (
-          <div className="markdoc-toolbar-popover markdoc-emoji-popover" role="dialog" aria-label={t('editor.emoji')} data-placement="bottom">
+          <div className="markdoc-toolbar-popover markdoc-emoji-popover" role="dialog" aria-label={t('editor.emoji')} data-placement="top">
             <div className="markdoc-emoji-tabs" role="tablist">
               {EMOJI_GROUPS.map(group => (
                 <button

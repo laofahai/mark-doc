@@ -1,0 +1,33 @@
+.markdoc-tiptap-editor .ProseMirror .tableWrapper {
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+.markdoc-tiptap-editor .ProseMirror .tableWrapper table {
+  width: auto;
+  table-layout: fixed;
+  margin: 0;
+}
+
+.markdoc-tiptap-editor .ProseMirror th,
+.markdoc-tiptap-editor .ProseMirror td {
+  position: relative;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+}
+
+.markdoc-tiptap-editor .ProseMirror .column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  bottom: 0;
+  width: 4px;
+  background: var(--primary);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.markdoc-tiptap-editor .ProseMirror.resize-cursor,
+.markdoc-tiptap-editor .ProseMirror.resize-cursor * {
+  cursor: col-resize !important;
+}

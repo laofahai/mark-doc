@@ -48,13 +48,16 @@ export function getEditorOutline(markdown: string): EditorOutlineItem[] {
   return items
 }
 
-export function outlineSelector(id: string) {
-  return `[data-markdoc-outline-id="${CSS.escape(id)}"]`
-}
-
-export function scrollToOutlineTarget(root: ParentNode, id: string) {
-  const target = root.querySelector<HTMLElement>(outlineSelector(id))
+export function scrollToOutlineTarget(root: ParentNode, markdown: string, id: string) {
+  const index = getEditorOutline(markdown).findIndex(item => item.id === id)
+  if (index < 0) return false
+  const target = root.querySelectorAll<HTMLElement>('.ProseMirror h1, .ProseMirror h2, .ProseMirror h3, .ProseMirror h4, .ProseMirror h5, .ProseMirror h6')[index]
   if (!target) return false
-  target.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  const canvas = target.closest<HTMLElement>('.markdoc-document-canvas')
+  if (canvas) {
+    canvas.scrollTo({ top: canvas.scrollTop + target.getBoundingClientRect().top - canvas.getBoundingClientRect().top - 16, behavior: 'smooth' })
+  } else {
+    target.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }
   return true
 }

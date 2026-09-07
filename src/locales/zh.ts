@@ -67,6 +67,12 @@ export default {
     expandHeading: '展开标题',
   },
   editor: {
+    largeDocument: '大文件',
+    documentMode: '文档视图',
+    sourceMode: '源码',
+    formattedMode: '排版',
+    loading: '正在打开文档…',
+    largeFormattedConfirm: '此文档较大，完整排版可能需要较长时间并暂时影响响应。继续切换？',
     placeholder: '开始编写...',
     startEditing: '打开文件或新建文件开始编辑',
     externalChange: '「{{fileName}}」已被外部程序修改',

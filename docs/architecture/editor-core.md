@@ -562,6 +562,32 @@ Tauri smoke tests:
 - open file dialog and folder sidebar do not hang
 - external file change prompt does not trigger after self-save
 
+## Large Documents and Table Widths
+
+The shell chooses virtualized source editing on initial open when Markdown reaches
+1,000,000 JavaScript characters or 10,000 lines. These are rendering thresholds,
+not file-size rejection limits. CodeMirror is loaded on demand and implements the
+same document adapter used for save, outline navigation, and asset insertion.
+The user can explicitly choose formatted editing after a load-time warning.
+Source mode prints the complete source, not just its visible lines; formatted
+printing requires formatted mode. File reading still loads the complete text into
+memory, so this is not a streaming editor for arbitrarily large files.
+
+The outline computes collapsed visibility in one pass and virtualizes lists over
+200 visible headings. Tiptap initial normalization is cached; selection changes do
+not scan document resources or rebuild the extension set.
+
+Ordinary tables retain Markdown pipe syntax. Tables with column widths or merged
+cells serialize as schema-generated HTML, preserving widths and contents in both
+Markdown and `.mdoc`. Image preprocessing leaves HTML table contents intact.
+Column resizing uses the native ProseMirror plugin with a screen-to-document
+coordinate correction for editor zoom; width values are stored in document pixels.
+
+Browser regressions cover a 2 MB / 20,000-line source document, 20,000 headings,
+editing and undo with full-content comparisons, print snapshot cleanup, and table
+drag/reload at 75%, 100%, and 150%. These are renderer checks, not a claim of
+unbounded file support or native desktop file-dialog/printing validation.
+
 ## References
 
 - Vditor README and API: <https://github.com/vanessa219/vditor>

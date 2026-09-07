@@ -112,8 +112,11 @@ async function validateWorkflow(root, errors) {
   requireIncludes(errors, 'release.yml', release, 'TAURI_SIGNING_PRIVATE_KEY')
   requireIncludes(errors, 'release.yml', release, 'TAURI_SIGNING_PRIVATE_KEY_PASSWORD')
   requireIncludes(errors, 'release.yml', release, 'releaseDraft: true')
-  requireIncludes(errors, 'release.yml', release, 'publish-release:')
-  requireIncludes(errors, 'release.yml', release, 'gh release edit')
+  requireIncludes(errors, 'release.yml', release, 'verify-candidate:')
+  requireIncludes(errors, 'release.yml', release, 'node scripts/validate-release-assets.mjs')
+  requireIncludes(errors, 'release.yml', release, 'pnpm test:e2e')
+  requireIncludes(errors, 'release.yml', release, 'ref: ${{ needs.preflight.outputs.sha }}')
+  requireNotIncludes(errors, 'release.yml', release, '--draft=false', 'release.yml must not automatically publish candidate releases')
   requireNotIncludes(errors, 'release.yml', release, 'node scripts/sync-version.mjs', 'release.yml must not mutate source versions during publish')
   requireNotIncludes(errors, 'release.yml', release, 'releaseDraft: false', 'release.yml must publish installers as a draft before final release')
   if (!release.includes('releaseDraft: true')) {

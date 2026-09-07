@@ -67,6 +67,12 @@ export default {
     expandHeading: 'Expand heading',
   },
   editor: {
+    largeDocument: 'Large document',
+    documentMode: 'Document view',
+    sourceMode: 'Source',
+    formattedMode: 'Formatted',
+    loading: 'Opening document…',
+    largeFormattedConfirm: 'This document is large. Full formatting may take time and temporarily reduce responsiveness. Continue?',
     placeholder: 'Start writing...',
     startEditing: 'Open a file or create new to start editing',
     externalChange: '"{{fileName}}" has been modified externally',

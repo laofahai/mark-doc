@@ -15,6 +15,7 @@ export class TiptapEditorAdapter implements DocumentEditorAdapter {
   constructor(
     private editor: TiptapEditor,
     private root: HTMLElement,
+    private outlineMarkdown?: () => string,
   ) {}
 
   getMarkdown() {
@@ -47,7 +48,6 @@ export class TiptapEditorAdapter implements DocumentEditorAdapter {
 
   private insertMarkdown(markdown: string) {
     const result = this.editor.chain().focus().insertContent(markdown, { contentType: 'markdown' }).run()
-    this.editor.commands.focus('end')
     return result
   }
 
@@ -60,7 +60,7 @@ export class TiptapEditorAdapter implements DocumentEditorAdapter {
   }
 
   scrollToOutlineItem(id: string) {
-    return scrollToOutlineTarget(this.root, id)
+    return scrollToOutlineTarget(this.root, this.outlineMarkdown?.() ?? this.getMarkdown(), id)
   }
 
   dispose() {

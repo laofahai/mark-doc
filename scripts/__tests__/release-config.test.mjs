@@ -80,12 +80,16 @@ async function writeFixtureProject() {
     '          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}',
     '          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}',
     '          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}',
-    '  publish-release:',
+    '  verify-candidate:',
     '    needs: publish',
     '    permissions:',
     '      contents: write',
     '    steps:',
-    '      - run: gh release edit ${{ github.ref_name }} --draft=false',
+    '      - run: node scripts/validate-release-assets.mjs',
+    '      - run: pnpm test:e2e',
+    '      - uses: actions/checkout@v4',
+    '        with:',
+    '          ref: ${{ needs.preflight.outputs.sha }}',
     '',
   ].join('\n'))
   await writeFile(join(root, 'README.md'), [
@@ -114,6 +118,30 @@ async function writeFixtureProject() {
 }
 
 describe('release configuration', () => {
+  it('rejects candidate workflows that automatically publish releases', async () => {
+    const root = await writeFixtureProject()
+    try {
+      const path = join(root, '.github/workflows/release.yml')
+      await writeFile(path, `${await readFile(path, 'utf8')}\n# accidental publication\n# gh release edit --draft=false\n`)
+      assert.ok((await validateReleaseConfig(root)).includes('release.yml must not automatically publish candidate releases'))
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects missing candidate browser and asset checks', async () => {
+    const root = await writeFixtureProject()
+    try {
+      const path = join(root, '.github/workflows/release.yml')
+      await writeFile(path, (await readFile(path, 'utf8')).replace('pnpm test:e2e', '').replace('node scripts/validate-release-assets.mjs', ''))
+      const errors = await validateReleaseConfig(root)
+      assert.ok(errors.includes('release.yml must include pnpm test:e2e'))
+      assert.ok(errors.includes('release.yml must include node scripts/validate-release-assets.mjs'))
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('syncs tag versions across package, Cargo and Tauri config', async () => {
     const root = await writeFixtureProject()
     try {

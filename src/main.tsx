@@ -4,6 +4,7 @@ import App from './App';
 import './index.css';
 import './styles/shell.css';
 import './styles/editor.css';
+import './styles/editor-tables.css';
 import './styles/utilities.css';
 
 type TauriInternalWindow = Window & {

@@ -1,10 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Editor as TiptapEditor } from '@tiptap/core'
 import { EditorContent, useEditor } from '@tiptap/react'
 import { handleEditorImagePaste, describeClipboardData, hasPastedImageFile, type ImportPastedImage } from '../../editor-core/asset-bridge'
 import { createMarkDocExtensions } from '../../editor-core/markdoc-extensions'
 import { prepareMarkdownForEditor } from '../../editor-core/markdown-codec'
-import { getEditorOutline } from '../../editor-core/outline'
 import { enforceRemoteResourcePolicy, observeRemoteResourcePolicy, type LocalResourceUrlResolver } from '../../editor-core/resource-security'
 import type { PackageSecurityPolicy } from '../../services/security/PackageSecurityPolicy'
 import { debugLog } from '../../services/debug-log'
@@ -29,17 +28,6 @@ function markdownFrom(editor: TiptapEditor) {
 
 function insertMarkdown(editor: TiptapEditor, markdown: string) {
   editor.chain().focus().insertContent(markdown, { contentType: 'markdown' }).run()
-  editor.commands.focus('end')
-}
-
-function annotateOutline(root: HTMLElement, markdown: string) {
-  const headings = Array.from(root.querySelectorAll<HTMLElement>('.ProseMirror h1, .ProseMirror h2, .ProseMirror h3, .ProseMirror h4, .ProseMirror h5, .ProseMirror h6'))
-  const outline = getEditorOutline(markdown)
-  headings.forEach((heading, index) => {
-    const item = outline[index]
-    if (item) heading.dataset.markdocOutlineId = item.id
-    else heading.removeAttribute('data-markdoc-outline-id')
-  })
 }
 
 export function TiptapMarkDocEditor({
@@ -62,6 +50,8 @@ export function TiptapMarkDocEditor({
   const onImagePasteRef = useRef(onImagePaste)
   const onChangeRef = useRef(onChange)
   const onRevisionRef = useRef(onRevision)
+  const [initialContent] = useState(() => prepareMarkdownForEditor(content))
+  const extensions = useMemo(() => createMarkDocExtensions({ placeholder }), [placeholder])
 
   securityPolicyRef.current = securityPolicy
   resolveAssetUrlRef.current = resolveAssetUrl
@@ -69,18 +59,18 @@ export function TiptapMarkDocEditor({
   onChangeRef.current = onChange
   onRevisionRef.current = onRevision
 
-  const applyRenderPolicies = (editor: TiptapEditor) => {
+  const applyRenderPolicies = () => {
     const root = rootRef.current
     if (!root) return
     enforceRemoteResourcePolicy(root, securityPolicyRef.current, resolveAssetUrlRef.current)
-    annotateOutline(root, markdownFrom(editor))
   }
 
   const editor = useEditor({
-    extensions: createMarkDocExtensions({ placeholder }),
-    content: prepareMarkdownForEditor(content),
+    extensions,
+    content: initialContent,
     contentType: 'markdown',
     immediatelyRender: false,
+    shouldRerenderOnTransaction: false,
     editorProps: {
       attributes: {
         class: 'markdoc-prosemirror',
@@ -106,9 +96,7 @@ export function TiptapMarkDocEditor({
           }
           void handleEditorImagePaste(event, importImage, markdown => {
             insertMarkdown(currentEditor, markdown)
-            onChangeRef.current?.(markdownFrom(currentEditor))
-            onRevisionRef.current?.()
-            applyRenderPolicies(currentEditor)
+            applyRenderPolicies()
           })
             .then(handled => debugLog('editor.paste.result', { handled }))
             .catch(cause => debugLog('editor.paste.failed', { cause }))
@@ -119,22 +107,21 @@ export function TiptapMarkDocEditor({
     onCreate: ({ editor: createdEditor }) => {
       const root = rootRef.current
       if (!root) return
-      const adapter = new TiptapEditorAdapter(createdEditor, root)
+      const adapter = new TiptapEditorAdapter(createdEditor, root, () => lastExternalContentRef.current)
       adapterRef.current = adapter
       onAdapterReady?.(adapter)
       onAdapterChange?.(adapter)
-      window.setTimeout(() => applyRenderPolicies(createdEditor), 0)
+      window.setTimeout(applyRenderPolicies, 0)
     },
     onUpdate: ({ editor: updatedEditor }) => {
       const markdown = markdownFrom(updatedEditor)
       lastExternalContentRef.current = markdown
       onChangeRef.current?.(markdown)
       onRevisionRef.current?.()
-      window.setTimeout(() => applyRenderPolicies(updatedEditor), 0)
+      window.setTimeout(applyRenderPolicies, 0)
     },
-    onSelectionUpdate: ({ editor: updatedEditor }) => {
+    onSelectionUpdate: () => {
       onRevisionRef.current?.()
-      window.setTimeout(() => applyRenderPolicies(updatedEditor), 0)
     },
   })
 
@@ -145,7 +132,7 @@ export function TiptapMarkDocEditor({
     if (content === lastExternalContentRef.current || content === markdownFrom(editor)) return
     lastExternalContentRef.current = content
     editor.commands.setContent(prepareMarkdownForEditor(content), { contentType: 'markdown' })
-    window.setTimeout(() => applyRenderPolicies(editor), 0)
+    window.setTimeout(applyRenderPolicies, 0)
   }, [content, editor])
 
   useEffect(() => {
@@ -159,7 +146,7 @@ export function TiptapMarkDocEditor({
   }, [])
 
   useEffect(() => {
-    if (editor) window.setTimeout(() => applyRenderPolicies(editor), 0)
+    if (editor) window.setTimeout(applyRenderPolicies, 0)
   }, [editor, securityPolicy, resolveAssetUrl])
 
   useEffect(() => {
