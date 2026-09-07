@@ -99,6 +99,14 @@ export function SettingsDialog({ open: isOpen, onOpenChange }: Props) {
                 <ThemeSwitcher variant="full" size="sm" />
               </div>
               <SettingsUpdateSection hasUnsavedDocuments={documentContext.tabs.some(tab => tab.isDirty)} />
+              <section className="space-y-2 text-xs text-muted-foreground" aria-label={t('settings.about')}>
+                <h3 className="text-sm font-medium text-foreground">{t('settings.about')}</h3>
+                <a href="https://linch.tech" target="_blank" rel="noopener noreferrer" className="hover:text-foreground">{t('settings.presentBy')}</a>
+                <div className="flex flex-wrap gap-4">
+                  <a href="https://linch.tech/zh/products/mark-doc" target="_blank" rel="noopener noreferrer" className="hover:text-foreground">{t('settings.website')}</a>
+                  <a href="https://github.com/laofahai/mark-doc" target="_blank" rel="noopener noreferrer" className="hover:text-foreground">GitHub</a>
+                </div>
+              </section>
             </div>
           )}
 

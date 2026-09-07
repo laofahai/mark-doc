@@ -1,4 +1,4 @@
-import { lazy, Suspense, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { lazy, Suspense, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ImportPastedImage } from '../../editor-core/asset-bridge'
 import type { LocalResourceUrlResolver } from '../../editor-core/resource-security'
@@ -28,6 +28,7 @@ export interface EditorProps {
   securityPolicy?: PackageSecurityPolicy | null
   onImagePaste?: ImportPastedImage
   resolveAssetUrl?: LocalResourceUrlResolver
+  status?: ReactNode
 }
 
 export function EditorShell({
@@ -40,6 +41,7 @@ export function EditorShell({
   securityPolicy,
   onImagePaste,
   resolveAssetUrl,
+  status,
 }: EditorProps) {
   const { t } = useTranslation()
   const [adapter, setAdapter] = useState<DocumentEditorAdapter | null>(null)
@@ -107,10 +109,11 @@ export function EditorShell({
           resolveAssetUrl={resolveAssetUrl}
         />
       </div>
-      <EditorPopoverLayer>
-        <EditorToolbar adapter={adapter} revision={revision} onImagePaste={onImagePaste} />
-      </EditorPopoverLayer>
       </>}
+      <EditorPopoverLayer>
+        {!sourceMode && <EditorToolbar adapter={adapter} revision={revision} onImagePaste={onImagePaste} />}
+        {status && <div className="markdoc-editor-status">{status}</div>}
+      </EditorPopoverLayer>
     </section>
   )
 }

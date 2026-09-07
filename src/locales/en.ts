@@ -28,9 +28,6 @@ export default {
     word: 'Word Document',
     wordTemplate: 'Word Style Template',
   },
-  footer: {
-    presentBy: 'Present by Linch Tech',
-  },
   toolbar: {
     documentCommands: 'Document commands',
     file: 'File',
@@ -67,6 +64,7 @@ export default {
     expandHeading: 'Expand heading',
   },
   editor: {
+    resetZoom: 'Reset zoom to 100%',
     largeDocument: 'Large document',
     documentMode: 'Document view',
     sourceMode: 'Source',
@@ -112,6 +110,9 @@ export default {
     },
   },
   settings: {
+    about: 'About MarkDoc',
+    presentBy: 'Made by Linch Tech',
+    website: 'Website',
     title: 'Settings',
     tabGeneral: 'General',
     tabTemplate: 'Document Template',

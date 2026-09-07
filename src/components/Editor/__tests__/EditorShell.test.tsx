@@ -9,6 +9,11 @@ vi.mock('../../../services/debug-log', () => ({
 }))
 
 describe('MarkDoc editor shell', () => {
+  it('keeps document status inside the bottom tool strip', async () => {
+    render(<Editor content="# Title" status={<span>42 characters</span>} />)
+    expect(await screen.findByTestId('markdoc-editor-toolbar-layer')).toContainElement(screen.getByText('42 characters'))
+  })
+
   it('does not normalize the entire document again when only zoom changes', async () => {
     const prepare = vi.spyOn(markdownCodec, 'prepareMarkdownForEditor')
     const content = '# Long document\n\n' + 'Paragraph.\n\n'.repeat(100)

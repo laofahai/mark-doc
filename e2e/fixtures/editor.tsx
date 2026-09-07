@@ -53,6 +53,7 @@ function Fixture() {
     </nav>}
     <div style={{ flex: 1, minWidth: 0 }}>
       <EditorShell
+        status={query.has('status') ? <><span>12345 characters</span><button type="button">125%</button></> : undefined}
         content={markdown}
         onChange={value => { changes.current += 1; setMarkdown(value) }}
         onAdapterReady={setAdapter}

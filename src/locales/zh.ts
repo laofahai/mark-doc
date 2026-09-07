@@ -28,9 +28,6 @@ export default {
     word: 'Word 文档',
     wordTemplate: 'Word 样式模板',
   },
-  footer: {
-    presentBy: '由 Linch Tech 呈现',
-  },
   toolbar: {
     documentCommands: '文档命令',
     file: '文件',
@@ -67,6 +64,7 @@ export default {
     expandHeading: '展开标题',
   },
   editor: {
+    resetZoom: '恢复至 100% 缩放',
     largeDocument: '大文件',
     documentMode: '文档视图',
     sourceMode: '源码',
@@ -112,6 +110,9 @@ export default {
     },
   },
   settings: {
+    about: '关于 MarkDoc',
+    presentBy: '由 Linch Tech 开发',
+    website: '官网',
     title: '设置',
     tabGeneral: '通用',
     tabTemplate: '文档模板',

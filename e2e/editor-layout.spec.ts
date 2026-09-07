@@ -141,3 +141,22 @@ for (const mode of ['fit', 'actual', 'wide']) {
     expect(result.width).toBeLessThanOrEqual(result.viewport)
   })
 }
+for (const width of [600, 1200]) {
+  test(`bottom tools and status share an opaque strip at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 })
+    await page.goto('/e2e/fixtures/editor.html?status')
+    const layer = page.getByTestId('markdoc-editor-toolbar-layer')
+    await expect(layer.getByText('12345 characters')).toBeVisible()
+    const status = (await page.locator('.markdoc-editor-status').boundingBox())!
+    const tools = (await page.getByRole('toolbar').boundingBox())!
+    const canvas = (await page.getByTestId('markdoc-document-canvas').boundingBox())!
+    const strip = (await layer.boundingBox())!
+    expect(status.x + status.width).toBeLessThanOrEqual(width)
+    expect(tools.x + tools.width).toBeLessThanOrEqual(status.x)
+    expect(canvas.y + canvas.height).toBeLessThanOrEqual(strip.y + 1)
+    expect(await layer.evaluate(el => getComputedStyle(el).backgroundColor)).not.toMatch(/transparent|rgba\([^)]*,\s*0\)/)
+    await page.screenshot({ path: `/tmp/markdoc-toolbar-${width}.png` })
+    await page.emulateMedia({ media: 'print' })
+    await expect(layer).toBeHidden()
+  })
+}
