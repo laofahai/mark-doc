@@ -27,6 +27,14 @@
   z-index: 2;
 }
 
+.markdoc-tiptap-editor .ProseMirror :is(th, td) > :first-child {
+  margin-top: 0;
+}
+
+.markdoc-tiptap-editor .ProseMirror :is(th, td) > :last-child {
+  margin-bottom: 0;
+}
+
 .markdoc-tiptap-editor .ProseMirror.resize-cursor,
 .markdoc-tiptap-editor .ProseMirror.resize-cursor * {
   cursor: col-resize !important;

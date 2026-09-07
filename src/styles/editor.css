@@ -187,7 +187,7 @@
 .markdoc-tiptap-editor .ProseMirror th,
 .markdoc-tiptap-editor .ProseMirror td {
   min-width: 64px;
-  padding: 8px 10px;
+  padding: 6px 10px;
   border: 1px solid var(--border);
 }
 
