@@ -1,10 +1,13 @@
 import { invoke } from '@tauri-apps/api/core'
 import { err, ok, type Result } from '../document/errors'
+import type { DocumentPageLayout } from '../document/page-layout'
 
 export interface DocxExportInput {
   markdownPath: string
   outputPath: string
   referenceDocx?: string
+  builtinTemplate?: 'daily' | 'formal'
+  pageLayout?: DocumentPageLayout
 }
 
 interface DocxExportCommandResult {
@@ -19,6 +22,8 @@ export class DocxExporter {
           markdownPath: input.markdownPath,
           outputPath: input.outputPath,
           referenceDocx: input.referenceDocx,
+          builtinTemplate: input.builtinTemplate,
+          pageLayout: input.pageLayout,
         },
       })
       return ok({ outputPath: result.output_path })

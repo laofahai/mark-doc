@@ -66,7 +66,7 @@ interface DocumentContextValue {
   retryRecovery: (documentId: string) => Promise<void>
   restoreRecovery: (documentId: string) => Promise<void>
   discardRecovery: (documentId: string) => void
-  exportActiveDocx: (outputPath: string, referenceDocx?: string) => Promise<void>
+  exportActiveDocx: (outputPath: string, template?: import('../services/document/document-service').DocxTemplateSelection) => Promise<void>
   trustActiveDocument: () => void
   allowActiveRemoteResourceType: (type: RemoteResourceType) => void
   allowActiveRemoteDomain: (domain: string) => void
@@ -640,10 +640,10 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     clearRecovery(documentId)
   }, [clearRecovery, recoveryService, recoveryStates])
 
-  const exportActiveDocx = useCallback(async (outputPath: string, referenceDocx?: string) => {
+  const exportActiveDocx = useCallback(async (outputPath: string, template?: import('../services/document/document-service').DocxTemplateSelection) => {
     if (!activeDocument) return
     const document = syncDocumentFromLiveEditor(activeDocument)
-    const exported = await documentService.exportDocx(document, outputPath, referenceDocx)
+    const exported = await documentService.exportDocx(document, outputPath, template)
     if (!exported.ok) setDocumentError(exported.error)
   }, [activeDocument, documentService, syncDocumentFromLiveEditor])
 

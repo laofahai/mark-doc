@@ -49,6 +49,15 @@ vi.mock('react-i18next', () => ({
 }))
 
 describe('DocumentCommandBar', () => {
+  it('routes PDF export through the existing system print action', () => {
+    const onPrint = vi.fn()
+    render(<DocumentCommandBar actions={{ ...baseActions, onPrint }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Export' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'toolbar.exportPdf' }))
+    expect(onPrint).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
   it('renders compact document commands for the header', () => {
     render(<DocumentCommandBar actions={baseActions} />)
 

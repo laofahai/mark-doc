@@ -9,7 +9,7 @@ import { PackageExporter } from '../exporters/PackageExporter'
 import type { DocumentModel, DocumentWorkspace } from './model'
 import { resolveSaveTarget } from './save-strategy'
 import { createTemporaryWorkspace } from './workspace-service'
-import { mergePageLayoutIntoManifest } from './page-layout'
+import { getDocumentPageLayout, mergePageLayoutIntoManifest } from './page-layout'
 import { fileDialogLabels } from '../../locales/file-dialog-labels'
 import { findLocalAssetReferences } from '../assets/AssetManager'
 import { copyFile, readTextFile, selectSavePath, writeTextFile } from '../native-file'
@@ -41,6 +41,11 @@ export interface OpenPathResult {
   document: DocumentModel
   resourceSuggestion?: OpenDocumentResult['resourceSuggestion']
 }
+
+export type DocxTemplateSelection =
+  | { type: 'builtin'; id: 'daily' | 'formal' }
+  | { type: 'original' }
+  | { type: 'custom'; path: string }
 
 export class DocumentService {
   private sessions = new DocumentSessionStore()
@@ -156,10 +161,23 @@ export class DocumentService {
     }
   }
 
-  async exportDocx(document: DocumentModel, outputPath: string, referenceDocx?: string): Promise<Result<{ outputPath: string }>> {
+  async exportDocx(document: DocumentModel, outputPath: string, template: DocxTemplateSelection = { type: 'builtin', id: 'daily' }): Promise<Result<{ outputPath: string }>> {
     try {
+      const referenceDocx = template.type === 'original' ? document.presentation.docx?.referenceDocx
+        : template.type === 'custom' ? template.path : undefined
+      if (template.type !== 'builtin' && !referenceDocx) {
+        return err('export.docxFailed', { messageKey: 'errors.export.docxFailed' })
+      }
       const workspace = await this.ensurePackageWorkspace(document)
-      return this.docxExporter.export({ markdownPath: workspace.entryPath, outputPath, referenceDocx: referenceDocx ?? document.presentation.docx?.referenceDocx })
+      return this.docxExporter.export({
+        markdownPath: workspace.entryPath,
+        outputPath,
+        referenceDocx,
+        builtinTemplate: template.type === 'builtin' ? template.id : undefined,
+        // Explicit document layout wins; otherwise user templates keep their own page geometry.
+        pageLayout: document.presentation.page || (template.type === 'builtin' && template.id !== 'formal'
+          ? getDocumentPageLayout(document) : undefined),
+      })
     } catch (cause) {
       return err('export.docxFailed', { messageKey: 'errors.export.docxFailed', cause })
     }

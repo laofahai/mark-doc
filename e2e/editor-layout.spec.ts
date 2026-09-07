@@ -160,3 +160,15 @@ for (const width of [600, 1200]) {
     await expect(layer).toBeHidden()
   })
 }
+test('daily document typography uses a 14px body and restrained headings', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 900 })
+  await page.goto('/e2e/fixtures/editor.html')
+  await expect(page.locator('[data-editor-ready="true"]')).toBeVisible()
+  await page.evaluate(() => window.markdocFixture!.loadExternal('# Daily notes\n\nBody text.\n\n## Section\n\n### Detail\n\n#### Subsection\n\n##### Note\n\n###### Aside'))
+  const sizes = await page.locator('.ProseMirror').evaluate(root => {
+    return ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'].map(selector => getComputedStyle(root.querySelector(selector)!).fontSize)
+  })
+  expect(sizes).toEqual(['14px', '22px', '18px', '16px', '14px', '14px', '14px'])
+  await page.emulateMedia({ media: 'print' })
+  expect(await page.locator('.ProseMirror p').first().evaluate(el => getComputedStyle(el).fontSize)).toBe('14px')
+})

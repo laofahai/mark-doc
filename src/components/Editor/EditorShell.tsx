@@ -15,6 +15,7 @@ import { EditorPopoverLayer } from './EditorPopoverLayer'
 import { EditorToolbar } from './EditorToolbar'
 import { TiptapMarkDocEditor } from './TiptapMarkDocEditor'
 import { needsVirtualizedEditor } from '../../editor-core/document-size'
+import presentation from '../../document-presentation.json'
 
 const SourceEditor = lazy(() => import('./SourceEditor'))
 
@@ -69,6 +70,13 @@ export function EditorShell({
     return () => observer.disconnect()
   }, [adapter, viewMode, normalizedPageLayout.size, normalizedPageLayout.orientation])
   const shellStyle = {
+    '--document-font-size': `${presentation.daily.fontSizePx}px`,
+    '--document-line-height': presentation.daily.lineHeight,
+    '--document-heading-line-height': presentation.daily.headingLineHeight,
+    '--document-heading-before': `${presentation.daily.headingSpaceBeforeEm}em`,
+    '--document-heading-after': `${presentation.daily.headingSpaceAfterEm}em`,
+    '--document-paragraph-space': `${presentation.daily.paragraphSpacingPx}px`,
+    ...Object.fromEntries(presentation.daily.headingSizesPx.map((size, index) => [`--document-h${index + 1}-size`, `${size}px`])),
     ...pageLayoutCssVars(normalizedPageLayout),
     ...(zoom !== 100 ? { '--editor-zoom': zoom / 100 } : {}),
   } as CSSProperties

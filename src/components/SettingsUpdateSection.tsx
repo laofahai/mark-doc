@@ -1,6 +1,5 @@
 import { Download, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { APP_VERSION } from '../app-version'
 import { useAppUpdater } from '../hooks/useAppUpdater'
 
 function formatPercent(downloaded?: number, contentLength?: number) {
@@ -22,18 +21,11 @@ export function SettingsUpdateSection({ hasUnsavedDocuments = false }: SettingsU
   const checking = updater.status === 'checking'
   const downloading = updater.status === 'downloading'
   const busy = checking || downloading || updater.status === 'restarting'
-  const installBlocked = hasUnsavedDocuments && updater.status === 'available'
+  const installBlocked = hasUnsavedDocuments && !busy
 
   return (
-    <section className="rounded-lg border p-4 bg-card space-y-3">
+    <section className="space-y-3" aria-label={t('settings.updateTitle')} aria-live="polite">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-sm font-medium">{t('settings.updateTitle')}</div>
-          <div className="text-xs text-muted-foreground mt-1">
-            {t('settings.currentVersion', { version: `v${APP_VERSION}` })}
-          </div>
-        </div>
-
         {updater.status !== 'unsupported' && (
           <button
             type="button"
@@ -60,8 +52,8 @@ export function SettingsUpdateSection({ hasUnsavedDocuments = false }: SettingsU
       )}
 
       {updater.update && (
-        <div className="space-y-2 rounded-md bg-accent/45 px-3 py-2">
-          <div className="flex items-center justify-between gap-3">
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="text-xs font-medium text-foreground">
                 {t('settings.updateAvailable', { version: updater.update.version })}
@@ -79,7 +71,7 @@ export function SettingsUpdateSection({ hasUnsavedDocuments = false }: SettingsU
               disabled={busy || installBlocked}
             >
               <Download size={13} />
-              {downloading ? t('settings.downloadingUpdate', { percent: progressPercent }) : t('settings.downloadAndRestart')}
+              {updater.status === 'restarting' ? t('settings.restartingUpdate') : downloading ? t('settings.downloadingUpdate', { percent: progressPercent }) : t('settings.downloadAndRestart')}
             </button>
           </div>
 
@@ -90,7 +82,7 @@ export function SettingsUpdateSection({ hasUnsavedDocuments = false }: SettingsU
           )}
 
           {updater.update.body && (
-            <p className="text-xs text-muted-foreground whitespace-pre-wrap line-clamp-4">
+            <p className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-32 overflow-y-auto">
               {updater.update.body}
             </p>
           )}
@@ -98,6 +90,7 @@ export function SettingsUpdateSection({ hasUnsavedDocuments = false }: SettingsU
           {downloading && (
             <div
               role="progressbar"
+              aria-label={t('settings.downloadingUpdate', { percent: progressPercent })}
               aria-valuemin={0}
               aria-valuemax={100}
               aria-valuenow={progressPercent}

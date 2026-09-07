@@ -212,6 +212,9 @@ export function DocumentCommandBar({ actions }: { actions: DocumentCommandAction
                 <button type="button" role="menuitem" className={menuButtonClass} onClick={() => runCommand(actions.onExportDocx, closeMenu)}>
                   <FileDown size={14} /> {t('toolbar.exportDocx')}
                 </button>
+                <button type="button" role="menuitem" className={menuButtonClass} onClick={() => runCommand(actions.onPrint, closeMenu)}>
+                  <Printer size={14} /> {t('toolbar.exportPdf')}
+                </button>
               </div>
             )}
           </div>

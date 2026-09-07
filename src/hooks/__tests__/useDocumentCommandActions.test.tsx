@@ -5,6 +5,15 @@ import { DocumentService } from '../../services/document/document-service'
 import type { DocumentModel } from '../../services/document/model'
 import { selectSavePath, writeTextFile } from '../../services/native-file'
 import { useDocumentCommandActions } from '../useDocumentCommandActions'
+import type { TemplateChoice } from '../../components/ExportDocxDialog'
+import type { ReactNode, ButtonHTMLAttributes } from 'react'
+
+vi.mock('@linch-tech/desktop-core', () => ({
+  Dialog: ({ open, children }: { open: boolean; children: ReactNode }) => open ? <div>{children}</div> : null,
+  DialogContent: 'div', DialogHeader: 'div', DialogTitle: 'h2', DialogFooter: 'div', Label: 'label',
+  Button: ({ children, onClick, disabled }: ButtonHTMLAttributes<HTMLButtonElement>) => <button onClick={onClick} disabled={disabled}>{children}</button>,
+  logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
+}))
 
 const saveDocument = vi.fn()
 const saveDocumentAsPackage = vi.fn()
@@ -27,9 +36,14 @@ vi.mock('../../services/native-file', () => ({
 vi.mock('../../components/ExportDocxDialog', () => ({
   ExportDocxDialog: ({ open, onExport }: {
     open: boolean
-    onExport: (choice: { type: 'builtin'; id: string }, outputPath: string) => void
+    onExport: (choice: TemplateChoice, outputPath: string) => void
   }) => open
-    ? <button type="button" onClick={() => onExport({ type: 'builtin', id: 'default' }, '/exports/report.docx')}>confirm docx export</button>
+    ? <>
+      <button type="button" onClick={() => onExport({ type: 'builtin', id: 'daily' }, '/exports/report.docx')}>confirm docx export</button>
+      <button type="button" onClick={() => onExport({ type: 'builtin', id: 'formal' }, '/exports/report.docx')}>formal export</button>
+      <button type="button" onClick={() => onExport({ type: 'original' }, '/exports/report.docx')}>original export</button>
+      <button type="button" onClick={() => onExport({ type: 'custom', path: '/docs/custom.docx' }, '/exports/report.docx')}>custom export</button>
+    </>
     : null,
 }))
 
@@ -78,6 +92,8 @@ function renderHarness() {
 describe('useDocumentCommandActions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.removeItem('docx_template')
+    localStorage.removeItem('docx_template_custom_path')
     vi.mocked(DocumentService).mockImplementation(function DocumentServiceMock() {
       return {
         saveDocument,
@@ -126,8 +142,56 @@ describe('useDocumentCommandActions', () => {
     await waitFor(() => expect(exportDocx).toHaveBeenCalledWith(
       expect.objectContaining({ source: { type: 'new' } }),
       '/exports/report.docx',
-      undefined,
+      { type: 'builtin', id: 'daily' },
     ))
+  })
+
+  it.each([
+    ['formal export', { type: 'builtin', id: 'formal' }],
+    ['original export', { type: 'original' }],
+    ['custom export', { type: 'custom', path: '/docs/custom.docx' }],
+  ])('preserves %s selection through the hook and context', async (label, choice) => {
+    renderHarness()
+    fireEvent.click(screen.getByRole('button', { name: 'create document' }))
+    fireEvent.click(screen.getByRole('button', { name: 'export docx' }))
+    fireEvent.click(screen.getByRole('button', { name: label as string }))
+    await waitFor(() => expect(exportDocx).toHaveBeenCalledWith(expect.anything(), '/exports/report.docx', choice))
+  })
+
+  it('defaults the real dialog to daily even when an original template is available', async () => {
+    vi.mocked(selectSavePath).mockResolvedValue('/exports/report.docx')
+    const { ExportDocxDialog } = await vi.importActual<typeof import('../../components/ExportDocxDialog')>('../../components/ExportDocxDialog')
+    const onExport = vi.fn()
+    render(<ExportDocxDialog open onOpenChange={vi.fn()} originalDocxPath="/docs/original.docx" defaultFileName="report.mdoc" onExport={onExport} />)
+    fireEvent.click(screen.getByRole('button', { name: 'common.export' }))
+    await waitFor(() => expect(onExport).toHaveBeenCalledWith({ type: 'builtin', id: 'daily' }, expect.stringContaining('report.docx')))
+    expect(selectSavePath).toHaveBeenCalledWith(expect.objectContaining({ defaultPath: expect.stringContaining('report.docx') }))
+    expect(onExport.mock.calls[0][1]).not.toContain('.mdoc.docx')
+    fireEvent.click(screen.getByText('export.formalTemplate'))
+    fireEvent.click(screen.getByRole('button', { name: 'common.export' }))
+    await waitFor(() => expect(onExport).toHaveBeenLastCalledWith({ type: 'builtin', id: 'formal' }, expect.any(String)))
+    fireEvent.click(screen.getByText('export.keepOriginalStyle'))
+    fireEvent.click(screen.getByRole('button', { name: 'common.export' }))
+    await waitFor(() => expect(onExport).toHaveBeenLastCalledWith({ type: 'original' }, expect.any(String)))
+  })
+
+  it.each([
+    ['custom', '/docs/custom.docx', { type: 'custom', path: '/docs/custom.docx' }],
+    ['custom', '/docs/CUSTOM.DOCX', { type: 'custom', path: '/docs/CUSTOM.DOCX' }],
+    ['custom', '', { type: 'builtin', id: 'daily' }],
+    ['custom', '   ', { type: 'builtin', id: 'daily' }],
+    ['custom', '/docs/report.md', { type: 'builtin', id: 'daily' }],
+    [null, '/docs/custom.docx', { type: 'builtin', id: 'daily' }],
+    [null, null, { type: 'builtin', id: 'daily' }],
+  ] as const)('uses only an explicit custom preference with a valid stored path (%s, %s)', async (preference, path, expected) => {
+    vi.mocked(selectSavePath).mockResolvedValue('/exports/report.docx')
+    if (preference !== null) localStorage.setItem('docx_template', preference)
+    if (path !== null) localStorage.setItem('docx_template_custom_path', path)
+    const { ExportDocxDialog } = await vi.importActual<typeof import('../../components/ExportDocxDialog')>('../../components/ExportDocxDialog')
+    const onExport = vi.fn()
+    render(<ExportDocxDialog open onOpenChange={vi.fn()} originalDocxPath="/docs/original.docx" defaultFileName="report.md" onExport={onExport} />)
+    fireEvent.click(screen.getByRole('button', { name: 'common.export' }))
+    await waitFor(() => expect(onExport).toHaveBeenCalledWith(expected, expect.any(String)))
   })
 
   it('routes page layout changes through DocumentContext presentation state', async () => {

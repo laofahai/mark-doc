@@ -109,6 +109,9 @@
   background: var(--background);
   box-shadow: 0 4px 18px color-mix(in srgb, var(--foreground) 7%, transparent);
   color: var(--foreground);
+  font-family: Arial, 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif;
+  font-size: var(--document-font-size, 14px);
+  line-height: var(--document-line-height, 1.6);
 }
 
 .markdoc-editor-shell[data-markdoc-view-mode="actual"] .markdoc-tiptap-editor .tiptap,
@@ -119,7 +122,7 @@
 }
 
 .markdoc-tiptap-editor .ProseMirror p {
-  margin: 0.8em 0;
+  margin: var(--document-paragraph-space, 7px) 0;
 }
 
 .markdoc-tiptap-editor .ProseMirror h1,
@@ -128,17 +131,17 @@
 .markdoc-tiptap-editor .ProseMirror h4,
 .markdoc-tiptap-editor .ProseMirror h5,
 .markdoc-tiptap-editor .ProseMirror h6 {
-  margin: 1.2em 0 0.55em;
-  font-weight: 700;
-  line-height: 1.22;
+  margin: var(--document-heading-before, 1em) 0 var(--document-heading-after, 0.4em);
+  font-weight: 600;
+  line-height: var(--document-heading-line-height, 1.4);
 }
 
-.markdoc-tiptap-editor .ProseMirror h1 { font-size: 2.15rem; }
-.markdoc-tiptap-editor .ProseMirror h2 { font-size: 1.7rem; }
-.markdoc-tiptap-editor .ProseMirror h3 { font-size: 1.35rem; }
-.markdoc-tiptap-editor .ProseMirror h4 { font-size: 1.12rem; }
-.markdoc-tiptap-editor .ProseMirror h5,
-.markdoc-tiptap-editor .ProseMirror h6 { font-size: 1rem; }
+.markdoc-tiptap-editor .ProseMirror h1 { font-size: var(--document-h1-size, 22px); }
+.markdoc-tiptap-editor .ProseMirror h2 { font-size: var(--document-h2-size, 18px); }
+.markdoc-tiptap-editor .ProseMirror h3 { font-size: var(--document-h3-size, 16px); }
+.markdoc-tiptap-editor .ProseMirror h4 { font-size: var(--document-h4-size, 14px); }
+.markdoc-tiptap-editor .ProseMirror h5 { font-size: var(--document-h5-size, 14px); }
+.markdoc-tiptap-editor .ProseMirror h6 { font-size: var(--document-h6-size, 14px); }
 
 .markdoc-tiptap-editor .ProseMirror blockquote {
   margin: 1em 0;

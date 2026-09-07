@@ -1,0 +1,11 @@
+{
+  "daily": {
+    "fontSizePx": 14,
+    "lineHeight": 1.6,
+    "headingSizesPx": [22, 18, 16, 14, 14, 14],
+    "headingLineHeight": 1.4,
+    "headingSpaceBeforeEm": 1,
+    "headingSpaceAfterEm": 0.4,
+    "paragraphSpacingPx": 7
+  }
+}

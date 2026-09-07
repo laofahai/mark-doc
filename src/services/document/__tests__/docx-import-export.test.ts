@@ -7,11 +7,62 @@ import { DocumentService } from '../document-service'
 
 vi.mock('../../native-file', () => ({
   readTextFile: vi.fn(),
+  writeTextFile: vi.fn(),
 }))
 
 describe('DOCX importer/exporter', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  it.each([
+    [undefined, 'daily', undefined],
+    [{ type: 'builtin', id: 'daily' }, 'daily', undefined],
+    [{ type: 'builtin', id: 'formal' }, 'formal', undefined],
+    [{ type: 'original' }, undefined, '/docs/original.docx'],
+    [{ type: 'custom', path: '/docs/custom.docx' }, undefined, '/docs/custom.docx'],
+  ] as const)('preserves explicit template choice %j with an original reference present', async (template, builtinTemplate, referenceDocx) => {
+    const service = new DocumentService()
+    const opened = await service.openMarkdown('/docs/report.md', '# Report')
+    if (!opened.ok) throw new Error('fixture failed')
+    const page = { size: 'letter', orientation: 'landscape', margins: { top: '1in', right: '2cm', bottom: '18mm', left: '12pt' } } as const
+    const document = { ...opened.value.document, presentation: { docx: { referenceDocx: '/docs/original.docx' }, page } }
+    vi.mocked(invoke).mockResolvedValueOnce({ output_path: '/docs/output.docx' })
+    const result = await service.exportDocx(document, '/docs/output.docx', template)
+    expect(result.ok).toBe(true)
+    expect(invoke).toHaveBeenCalledWith('export_workspace_to_docx', {
+      input: expect.objectContaining({ builtinTemplate, referenceDocx, pageLayout: page }),
+    })
+  })
+
+  it('rejects unavailable original templates instead of silently using daily', async () => {
+    const service = new DocumentService()
+    const opened = await service.openMarkdown('/docs/report.md', '# Report')
+    if (!opened.ok) throw new Error('fixture failed')
+    expect(await service.exportDocx(opened.value.document, '/docs/output.docx', { type: 'original' })).toMatchObject({ ok: false })
+    expect(invoke).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { type: 'original' },
+    { type: 'custom', path: '/docs/custom.docx' },
+    { type: 'builtin', id: 'formal' },
+  ] as const)('preserves template page geometry without explicit document settings: %j', async template => {
+    const service = new DocumentService()
+    const opened = await service.openMarkdown('/docs/report.md', '# Report')
+    if (!opened.ok) throw new Error('fixture failed')
+    const document = { ...opened.value.document, presentation: { docx: { referenceDocx: '/docs/original.docx' } } }
+    vi.mocked(invoke).mockResolvedValueOnce({ output_path: '/docs/output.docx' })
+    expect(await service.exportDocx(document, '/docs/output.docx', template)).toMatchObject({ ok: true })
+    expect(invoke).toHaveBeenCalledWith('export_workspace_to_docx', { input: expect.objectContaining({ pageLayout: undefined }) })
+  })
+
+  it('passes explicit builtin and page parameters through the exporter', async () => {
+    const pageLayout = { size: 'letter', orientation: 'landscape', margins: { top: '1in', right: '1in', bottom: '1in', left: '1in' } } as const
+    vi.mocked(invoke).mockResolvedValueOnce({ output_path: '/docs/report.docx' })
+    const input = { markdownPath: '/tmp/document.md', outputPath: '/docs/report.docx', builtinTemplate: 'formal', pageLayout } as const
+    expect(await new DocxExporter().export(input)).toMatchObject({ ok: true })
+    expect(invoke).toHaveBeenCalledWith('export_workspace_to_docx', { input: { ...input, referenceDocx: undefined } })
   })
 
   it('uses the workspace paths returned by the docx import command', async () => {

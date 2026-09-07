@@ -45,12 +45,7 @@ export function useDocumentCommandActions({ viewMode, onViewModeChange }: UseDoc
   const handleExportDocxWithTemplate = useCallback(async (choice: TemplateChoice, outputPath: string) => {
     if (!activeDocument) return
     try {
-      const refPath = choice.type === 'original'
-        ? activeDocument.presentation.docx?.referenceDocx
-        : choice.type === 'custom'
-          ? choice.path
-          : undefined
-      await documentContext.exportActiveDocx(outputPath, refPath)
+      await documentContext.exportActiveDocx(outputPath, choice)
     } catch (error) {
       console.error('Export docx failed:', error)
       alert(String(error))

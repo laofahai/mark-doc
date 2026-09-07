@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   Button, Label,
@@ -22,10 +22,7 @@ function shortenPath(p: string, maxLen = 45): string {
   return shortened.length < p.length ? shortened : p
 }
 
-export type TemplateChoice =
-  | { type: 'builtin'; id: string }
-  | { type: 'original' }
-  | { type: 'custom'; path: string }
+export type TemplateChoice = import('../services/document/document-service').DocxTemplateSelection
 
 interface Props {
   open: boolean
@@ -40,22 +37,25 @@ const LAST_EXPORT_DIR_KEY = 'mark-doc-last-export-dir'
 
 export function ExportDocxDialog({ open: isOpen, onOpenChange, originalDocxPath, defaultFileName, currentFilePath, onExport }: Props) {
   const { t } = useTranslation()
-  const [selected, setSelected] = useState<TemplateChoice>({ type: 'builtin', id: 'default' })
+  const [selected, setSelected] = useState<TemplateChoice>({ type: 'builtin', id: 'daily' })
   const [customPath, setCustomPath] = useState<string | null>(null)
   const [outputPath, setOutputPath] = useState<string>('')
+  const [choosingOutput, setChoosingOutput] = useState(false)
+  const [outputError, setOutputError] = useState(false)
+  const outputDialogPending = useRef(false)
 
   useEffect(() => {
     if (isOpen) {
-      if (originalDocxPath) {
-        setSelected({ type: 'original' })
-      } else {
-        setSelected({ type: 'builtin', id: 'default' })
-      }
-      const v = localStorage.getItem('docx_template_custom_path')
-      if (v) setCustomPath(v)
+      setOutputError(false)
+      const storedPath = localStorage.getItem('docx_template_custom_path')?.trim()
+      const path = storedPath && /\.docx$/i.test(storedPath) && !storedPath.includes('\0') ? storedPath : null
+      setCustomPath(path)
+      setSelected(localStorage.getItem('docx_template') === 'custom' && path
+        ? { type: 'custom', path }
+        : { type: 'builtin', id: 'daily' })
 
       // 计算默认保存路径
-      const docxName = (defaultFileName || 'untitled').replace(/\.(md|docx)$/i, '') + '.docx'
+      const docxName = (defaultFileName || 'untitled').replace(/\.(md|markdown|mdoc|txt|docx|doc)$/i, '') + '.docx'
       const lastDir = localStorage.getItem(LAST_EXPORT_DIR_KEY)
       const sourceDir = currentFilePath
         ? currentFilePath.substring(0, currentFilePath.lastIndexOf('/'))
@@ -76,26 +76,40 @@ export function ExportDocxDialog({ open: isOpen, onOpenChange, originalDocxPath,
     }
   }, [t])
 
-  const handlePickOutputPath = useCallback(async () => {
-    const filePath = await selectSavePath({
-      filters: [{ name: t('fileFilters.word'), extensions: ['docx'] }],
-      defaultPath: outputPath || undefined,
-    })
-    if (filePath) {
-      let p = filePath as string
-      if (!p.toLowerCase().endsWith('.docx')) p += '.docx'
-      setOutputPath(p)
-      // 记住目录
-      const dir = p.substring(0, p.lastIndexOf('/'))
-      if (dir) localStorage.setItem(LAST_EXPORT_DIR_KEY, dir)
+  const chooseOutput = useCallback(async (exportAfterConfirmation: boolean) => {
+    if (outputDialogPending.current) return
+    outputDialogPending.current = true
+    setChoosingOutput(true)
+    setOutputError(false)
+    try {
+      let defaultPath = outputPath || undefined
+      while (true) {
+        const path = await selectSavePath({
+          filters: [{ name: t('fileFilters.word'), extensions: ['docx'] }],
+          defaultPath,
+        })
+        if (!path) return
+        // Confirm the exact final path, including any extension we add.
+        if (!path.toLowerCase().endsWith('.docx')) {
+          defaultPath = `${path}.docx`
+          continue
+        }
+        setOutputPath(path)
+        const dir = path.substring(0, Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')))
+        if (dir) localStorage.setItem(LAST_EXPORT_DIR_KEY, dir)
+        if (exportAfterConfirmation) {
+          onOpenChange(false)
+          onExport(selected, path)
+        }
+        return
+      }
+    } catch {
+      setOutputError(true)
+    } finally {
+      outputDialogPending.current = false
+      setChoosingOutput(false)
     }
-  }, [outputPath])
-
-  const handleExport = useCallback(async () => {
-    if (!outputPath) return
-    onOpenChange(false)
-    onExport(selected, outputPath)
-  }, [selected, outputPath, onExport, onOpenChange])
+  }, [outputPath, selected, t, onExport, onOpenChange])
 
   const isSelected = (choice: TemplateChoice) => {
     if (selected.type !== choice.type) return false
@@ -105,7 +119,7 @@ export function ExportDocxDialog({ open: isOpen, onOpenChange, originalDocxPath,
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+    <Dialog open={isOpen} onOpenChange={open => { if (!outputDialogPending.current) onOpenChange(open) }}>
       <DialogContent className="sm:max-w-[420px]">
         <DialogHeader>
           <DialogTitle>{t('export.title')}</DialogTitle>
@@ -124,10 +138,17 @@ export function ExportDocxDialog({ open: isOpen, onOpenChange, originalDocxPath,
           )}
 
           <TemplateOption
-            selected={isSelected({ type: 'builtin', id: 'default' })}
-            onClick={() => setSelected({ type: 'builtin', id: 'default' })}
-            title={t('export.defaultTemplate')}
-            desc={t('export.defaultTemplateDesc')}
+            selected={isSelected({ type: 'builtin', id: 'daily' })}
+            onClick={() => setSelected({ type: 'builtin', id: 'daily' })}
+            title={t('export.dailyTemplate')}
+            desc={t('export.dailyTemplateDesc')}
+          />
+
+          <TemplateOption
+            selected={isSelected({ type: 'builtin', id: 'formal' })}
+            onClick={() => setSelected({ type: 'builtin', id: 'formal' })}
+            title={t('export.formalTemplate')}
+            desc={t('export.formalTemplateDesc')}
           />
 
           {customPath ? (
@@ -153,7 +174,7 @@ export function ExportDocxDialog({ open: isOpen, onOpenChange, originalDocxPath,
           <Label className="text-xs text-muted-foreground">{t('export.saveTo')}</Label>
           <div
             className="flex items-center gap-2 p-2 rounded-lg border border-border text-xs cursor-pointer hover:bg-accent/50 transition-colors"
-            onClick={handlePickOutputPath}
+            onClick={() => void chooseOutput(false)}
           >
             <FileText size={14} className="shrink-0 text-muted-foreground" />
             <span className="truncate flex-1 text-foreground" title={outputPath}>{outputPath ? shortenPath(outputPath) : t('export.selectSavePath')}</span>
@@ -161,9 +182,11 @@ export function ExportDocxDialog({ open: isOpen, onOpenChange, originalDocxPath,
           </div>
         </div>
 
+        {outputError && <p role="alert" className="text-xs text-destructive">{t('errors.export.docxFailed')}</p>}
+
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>{t('common.cancel')}</Button>
-          <Button onClick={handleExport} disabled={!outputPath}>{t('common.export')}</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={choosingOutput}>{t('common.cancel')}</Button>
+          <Button onClick={() => void chooseOutput(true)} disabled={!outputPath || choosingOutput}>{t('common.export')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

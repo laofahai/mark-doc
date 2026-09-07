@@ -41,13 +41,32 @@ describe('SettingsUpdateSection', () => {
     })
   })
 
-  it('shows the app version and checks for updates on demand', () => {
+  it('checks for updates without repeating the about version', () => {
     render(<SettingsUpdateSection />)
 
-    expect(screen.getByText('Current version v0.1.2')).toBeInTheDocument()
+    expect(screen.queryByText(/Current version/)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Check for updates' }))
 
     expect(checkNow).toHaveBeenCalledOnce()
+  })
+
+  it.each(['checking', 'restarting'] as const)('disables actions while %s', status => {
+    vi.mocked(useAppUpdater).mockReturnValue({ status, update: { available: true, version: '0.2.0' }, progress: null, error: null, checkNow, installAndRestart })
+    render(<SettingsUpdateSection />)
+    screen.getAllByRole('button').forEach(button => expect(button).toBeDisabled())
+    if (status === 'restarting') expect(screen.getByText('settings.restartingUpdate')).toBeInTheDocument()
+  })
+
+  it.each(['upToDate', 'error'] as const)('announces %s', status => {
+    vi.mocked(useAppUpdater).mockReturnValue({ status, update: null, progress: null, error: 'Offline', checkNow, installAndRestart })
+    render(<SettingsUpdateSection />)
+    expect(screen.getByText(status === 'error' ? 'settings.updateFailed' : 'settings.upToDate')).toBeInTheDocument()
+  })
+
+  it('blocks retry after an installation error when documents are dirty', () => {
+    vi.mocked(useAppUpdater).mockReturnValue({ status: 'error', update: { available: true, version: '0.2.0' }, progress: null, error: 'Offline', checkNow, installAndRestart })
+    render(<SettingsUpdateSection hasUnsavedDocuments />)
+    expect(screen.getByRole('button', { name: 'Download and restart' })).toBeDisabled()
   })
 
   it('shows a checked release and starts installation from the section', () => {

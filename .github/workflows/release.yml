@@ -77,7 +77,7 @@ jobs:
       - name: Install Linux desktop dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf pandoc
 
       - run: pnpm install --frozen-lockfile
 
@@ -86,6 +86,8 @@ jobs:
           RELEASE_VERSION: ${{ steps.release-version.outputs.value }}
         run: pnpm run release:check -- --release-version "$RELEASE_VERSION"
       - run: pnpm run ci
+      - name: Verify actual Word export
+        run: cargo test --manifest-path src-tauri/Cargo.toml actual_pandoc_exports_daily_formal_and_custom_with_page_geometry -- --ignored
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e
 

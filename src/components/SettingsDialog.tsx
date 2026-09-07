@@ -7,7 +7,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import { FileText, Upload, Check, Trash2 } from 'lucide-react'
 import { selectDocumentFile } from '../services/native-file'
-import { SettingsUpdateSection } from './SettingsUpdateSection'
+import { SettingsAboutSection } from './SettingsAboutSection'
 import { useDocument } from '../contexts/DocumentContext'
 
 type TemplateId = 'default' | 'custom'
@@ -20,7 +20,7 @@ interface Props {
 export function SettingsDialog({ open: isOpen, onOpenChange }: Props) {
   const { t } = useTranslation()
   const documentContext = useDocument()
-  const [tab, setTab] = useState<'general' | 'template'>('general')
+  const [tab, setTab] = useState<'general' | 'template' | 'about'>('general')
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateId>('default')
   const [customTemplatePath, setCustomTemplatePath] = useState<string | null>(null)
 
@@ -64,6 +64,7 @@ export function SettingsDialog({ open: isOpen, onOpenChange }: Props) {
   const tabs = [
     { id: 'general' as const, label: t('settings.tabGeneral') },
     { id: 'template' as const, label: t('settings.tabTemplate') },
+    { id: 'about' as const, label: t('settings.tabAbout') },
   ]
 
   return (
@@ -73,10 +74,26 @@ export function SettingsDialog({ open: isOpen, onOpenChange }: Props) {
           <DialogTitle>{t('settings.title')}</DialogTitle>
         </DialogHeader>
 
-        <div className="flex items-center gap-0 px-5 border-b border-border">
+        <div role="tablist" aria-label={t('settings.title')} className="flex items-center gap-0 px-5 border-b border-border">
           {tabs.map(tb => (
             <button
               key={tb.id}
+              type="button"
+              role="tab"
+              id={`settings-tab-${tb.id}`}
+              aria-controls="settings-panel"
+              aria-selected={tab === tb.id}
+              tabIndex={tab === tb.id ? 0 : -1}
+              onKeyDown={event => {
+                const index = tabs.findIndex(item => item.id === tab)
+                const next = event.key === 'ArrowRight' ? (index + 1) % tabs.length
+                  : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length
+                  : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : null
+                if (next === null) return
+                event.preventDefault()
+                setTab(tabs[next].id)
+                event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus()
+              }}
               className={`px-3 py-2 text-xs border-b-2 transition-colors bg-transparent cursor-pointer ${
                 tab === tb.id ? 'border-foreground text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
@@ -87,7 +104,7 @@ export function SettingsDialog({ open: isOpen, onOpenChange }: Props) {
           ))}
         </div>
 
-        <div className="overflow-y-auto" style={{ maxHeight: 'calc(80vh - 120px)' }}>
+        <div id="settings-panel" role="tabpanel" aria-labelledby={`settings-tab-${tab}`} className="overflow-y-auto" style={{ maxHeight: 'calc(80vh - 120px)' }}>
           {tab === 'general' && (
             <div className="space-y-4 p-5">
               <div className="rounded-lg border p-4 bg-card flex items-center justify-between">
@@ -98,17 +115,12 @@ export function SettingsDialog({ open: isOpen, onOpenChange }: Props) {
                 <Label className="text-sm font-medium">{t('common.theme')}</Label>
                 <ThemeSwitcher variant="full" size="sm" />
               </div>
-              <SettingsUpdateSection hasUnsavedDocuments={documentContext.tabs.some(tab => tab.isDirty)} />
-              <section className="space-y-2 text-xs text-muted-foreground" aria-label={t('settings.about')}>
-                <h3 className="text-sm font-medium text-foreground">{t('settings.about')}</h3>
-                <a href="https://linch.tech" target="_blank" rel="noopener noreferrer" className="hover:text-foreground">{t('settings.presentBy')}</a>
-                <div className="flex flex-wrap gap-4">
-                  <a href="https://linch.tech/zh/products/mark-doc" target="_blank" rel="noopener noreferrer" className="hover:text-foreground">{t('settings.website')}</a>
-                  <a href="https://github.com/laofahai/mark-doc" target="_blank" rel="noopener noreferrer" className="hover:text-foreground">GitHub</a>
-                </div>
-              </section>
             </div>
           )}
+
+          <div hidden={tab !== 'about'}>
+            <SettingsAboutSection hasUnsavedDocuments={documentContext.tabs.some(document => document.isDirty)} />
+          </div>
 
           {tab === 'template' && (
             <div className="space-y-4 p-5">
